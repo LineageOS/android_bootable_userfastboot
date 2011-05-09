@@ -34,40 +34,55 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-
 /* todo: give lk strtoul and nuke this */
 static unsigned hex2unsigned(const char *x)
 {
-    unsigned n = 0;
+	unsigned n = 0;
 
-    while(*x) {
-        switch(*x) {
-        case '0': case '1': case '2': case '3': case '4':
-        case '5': case '6': case '7': case '8': case '9':
-            n = (n << 4) | (*x - '0');
-            break;
-        case 'a': case 'b': case 'c':
-        case 'd': case 'e': case 'f':
-            n = (n << 4) | (*x - 'a' + 10);
-            break;
-        case 'A': case 'B': case 'C':
-        case 'D': case 'E': case 'F':
-            n = (n << 4) | (*x - 'A' + 10);
-            break;
-        default:
-            return n;
-        }
-        x++;
-    }
+	while (*x) {
+		switch (*x) {
+		case '0':
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
+			n = (n << 4) | (*x - '0');
+			break;
+		case 'a':
+		case 'b':
+		case 'c':
+		case 'd':
+		case 'e':
+		case 'f':
+			n = (n << 4) | (*x - 'a' + 10);
+			break;
+		case 'A':
+		case 'B':
+		case 'C':
+		case 'D':
+		case 'E':
+		case 'F':
+			n = (n << 4) | (*x - 'A' + 10);
+			break;
+		default:
+			return n;
+		}
+		x++;
+	}
 
-    return n;
+	return n;
 }
 
 struct fastboot_cmd {
 	struct fastboot_cmd *next;
 	const char *prefix;
 	unsigned prefix_len;
-	void (*handle)(const char *arg, void *data, unsigned sz);
+	void (*handle) (const char *arg, void *data, unsigned sz);
 };
 
 struct fastboot_var {
@@ -79,7 +94,8 @@ struct fastboot_var {
 static struct fastboot_cmd *cmdlist;
 
 void fastboot_register(const char *prefix,
-		       void (*handle)(const char *arg, void *data, unsigned sz))
+		       void (*handle) (const char *arg, void *data,
+				       unsigned sz))
 {
 	struct fastboot_cmd *cmd;
 	cmd = malloc(sizeof(*cmd));
@@ -109,12 +125,11 @@ void fastboot_publish(const char *name, const char *value)
 const char *fastboot_getvar(const char *name)
 {
 	struct fastboot_var *var;
-	for (var=varlist; var; var=var->next)
+	for (var = varlist; var; var = var->next)
 		if (!strcmp(name, var->name))
 			return (var->value);
 	return NULL;
 }
-
 
 static unsigned char buffer[4096];
 
@@ -153,11 +168,12 @@ static int usb_read(void *_buf, unsigned len)
 		}
 
 		count += r;
-		buf +=r;
+		buf += r;
 		len -= r;
 
 		/* short transfer? */
-		if (r != xfer) break;
+		if (r != xfer)
+			break;
 	}
 
 	return count;
@@ -167,7 +183,6 @@ oops:
 	dprintf(INFO, "usb_read faled: asked for %d and got %d\n", len, r);
 	return -1;
 }
-
 
 static int usb_write(void *buf, unsigned len)
 {
@@ -223,7 +238,7 @@ static void cmd_getvar(const char *arg, void *data, unsigned sz)
 {
 	struct fastboot_var *var;
 
-	dprintf(INFO,"fastboot: cmd_getvar %s\n",arg);
+	dprintf(INFO, "fastboot: cmd_getvar %s\n", arg);
 	for (var = varlist; var; var = var->next) {
 		if (!strcmp(var->name, arg)) {
 			fastboot_okay(var->value);
@@ -239,7 +254,7 @@ static void cmd_download(const char *arg, void *data, unsigned sz)
 	unsigned len = hex2unsigned(arg);
 	int r;
 
-	dprintf(INFO,"fastboot: cmd_download %d bytes\n",len);
+	dprintf(INFO, "fastboot: cmd_download %d bytes\n", len);
 
 	download_size = 0;
 	if (len > download_max) {
@@ -247,13 +262,14 @@ static void cmd_download(const char *arg, void *data, unsigned sz)
 		return;
 	}
 
-	sprintf(response,"DATA%08x", len);
+	sprintf(response, "DATA%08x", len);
 	if (usb_write(response, strlen(response)) < 0)
 		return;
 
 	r = usb_read(download_base, len);
 	if ((r < 0) || (r != len)) {
-		dprintf(INFO,"fastboot: cmd_download errro only got %d bytes\n",r);
+		dprintf(INFO,
+			"fastboot: cmd_download errro only got %d bytes\n", r);
 		fastboot_state = STATE_ERROR;
 		return;
 	}
@@ -265,22 +281,23 @@ static void fastboot_command_loop(void)
 {
 	struct fastboot_cmd *cmd;
 	int r;
-	dprintf(INFO,"fastboot: processing commands\n");
+	dprintf(INFO, "fastboot: processing commands\n");
 
 again:
 	while (fastboot_state != STATE_ERROR) {
 		memset(buffer, 0, 64);
 		r = usb_read(buffer, 64);
-		if (r < 0) break;
+		if (r < 0)
+			break;
 		buffer[r] = 0;
-		dprintf(INFO,"fastboot: %s\n", buffer);
+		dprintf(INFO, "fastboot: %s\n", buffer);
 
 		for (cmd = cmdlist; cmd; cmd = cmd->next) {
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
 				continue;
 			fastboot_state = STATE_COMMAND;
-			cmd->handle((const char*) buffer + cmd->prefix_len,
-				    (void*) download_base, download_size);
+			cmd->handle((const char *)buffer + cmd->prefix_len,
+				    (void *)download_base, download_size);
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");
 			goto again;
@@ -290,9 +307,8 @@ again:
 
 	}
 	fastboot_state = STATE_OFFLINE;
-	dprintf(INFO,"fastboot: oops!\n");
+	dprintf(INFO, "fastboot: oops!\n");
 }
-
 
 static int fastboot_handler(void *arg)
 {
@@ -316,7 +332,6 @@ static int fastboot_handler(void *arg)
 	}
 	return 0;
 }
-
 
 int fastboot_init(void *base, unsigned size)
 {

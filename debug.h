@@ -1,3 +1,6 @@
+#ifndef DROIDBOOT_DEBUG_H
+#define DROIDBOOT_DEBUG_H
+
 #include <stdio.h>
 
 /* debug levels */
@@ -6,7 +9,7 @@
 #define INFO 1
 #define SPEW 2
 
-//#define DEBUG SPEW
+#define DEBUG INFO
 
 #if defined(DEBUG)
 #define DEBUGLEVEL DEBUG
@@ -14,6 +17,12 @@
 #define DEBUGLEVEL 0
 #endif
 
+#define dperror(n) dprintf(CRITICAL, "%s: %s", n, strerror(errno))
 
-#define dprintf(level, x...) do { if ((level) <= DEBUGLEVEL) { write_to_user(x); } } while (0)
+#define dprintf(level, format, ...) do { \
+	if ((level) <= DEBUGLEVEL) { \
+		printf("droidboot " #level ": " format, ##__VA_ARGS__); \
+	} \
+} while (0)
 
+#endif

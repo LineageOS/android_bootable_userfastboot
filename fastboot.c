@@ -148,7 +148,7 @@ int enable_fp;
 
 static int usb_read(void *_buf, unsigned len)
 {
-	int r;
+	int r = 0;
 	unsigned xfer;
 	unsigned char *buf = _buf;
 	int count = 0;
@@ -172,7 +172,7 @@ static int usb_read(void *_buf, unsigned len)
 		len -= r;
 
 		/* short transfer? */
-		if (r != xfer)
+		if ((unsigned int)r != xfer)
 			break;
 	}
 
@@ -267,7 +267,7 @@ static void cmd_download(const char *arg, void *data, unsigned sz)
 		return;
 
 	r = usb_read(download_base, len);
-	if ((r < 0) || (r != len)) {
+	if ((r < 0) || ((unsigned int)r != len)) {
 		dprintf(INFO,
 			"fastboot: cmd_download errro only got %d bytes\n", r);
 		fastboot_state = STATE_ERROR;

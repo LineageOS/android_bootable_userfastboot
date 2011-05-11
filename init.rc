@@ -1,0 +1,27 @@
+on early-init
+    start ueventd
+
+on init
+    export PATH /sbin:/system/sbin:/system/bin:/system/xbin
+    export ANDROID_ROOT /system
+    export ANDROID_DATA /data
+
+    symlink /system/etc /etc
+
+    mount /tmp /tmp tmpfs
+    mount /data /data tmpfs
+
+on boot
+    ifup lo
+    hostname localhost
+    domainname localdomain
+    start droidboot
+
+service ueventd /sbin/ueventd
+    critical
+
+service droidboot /system/bin/droidboot
+    console
+
+service console /system/bin/sh
+    console

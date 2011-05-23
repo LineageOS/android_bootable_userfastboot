@@ -4,10 +4,13 @@ include $(CLEAR_VARS)
 ifeq ($(TARGET_USE_DROIDBOOT),true)
 
 LOCAL_SRC_FILES := \
-	aboot.c fastboot.c
+	aboot.c \
+	fastboot.c \
+	util.c \
+	droidboot.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_DEVICE)\" \
-    -O2 -g -W -Wall -Wno-unused-parameter -Werror
+	-W -Wall -Wno-unused-parameter -Werror
 
 LOCAL_MODULE := droidboot
 LOCAL_MODULE_TAGS := optional

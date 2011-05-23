@@ -26,13 +26,15 @@
  * SUCH DAMAGE.
  */
 
-#include "debug.h"
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#include "debug.h"
+#include "droidboot.h"
 
 /* todo: give lk strtoul and nuke this */
 static unsigned hex2unsigned(const char *x)
@@ -295,6 +297,7 @@ again:
 		for (cmd = cmdlist; cmd; cmd = cmd->next) {
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
 				continue;
+			disable_autoboot();
 			fastboot_state = STATE_COMMAND;
 			cmd->handle((const char *)buffer + cmd->prefix_len,
 				    (void *)download_base, download_size);

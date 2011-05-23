@@ -29,92 +29,49 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/select.h>
-#include <sys/time.h>
-#include <sys/reboot.h>
-#include <sys/mount.h>
-#include <sys/wait.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <errno.h>
+#include <sys/mman.h>
+#include <sys/mount.h>
+#include <sys/reboot.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
-#include <stdarg.h>
+
 #include <diskconfig/diskconfig.h>
 
 #include "debug.h"
 #include "fastboot.h"
+#include "droidboot.h"
+#include "util.h"
 
-/* libdiskconfig data structure representing the intended layout of the
- * internal disk, as read from /etc/disk_layout.conf */
-static struct disk_info *dinfo;
 
 #define CMD_SYSTEM		"system"
 #define CMD_PARTITION		"partition"
+#define CMD_REBOOT		"reboot"
 
 #define SYSTEM_BUF_SIZ     512	/* For system() and popen() calls. */
 #define CONSOLE_BUF_SIZ    400	/* For writes to /dev/console and friends */
 #define PARTITION_NAME_SIZ 100	/* Partition names (/mnt/boot) */
 
-#define MAX_SIZE_OF_SCRATCH (256*1024*1024)
-static void *scratch;
 
-static int execute_command(const char *cmd)
-{
-	int ret;
-
-	dprintf(SPEW, "Executing: '%s'\n", cmd);
-	ret = system(cmd);
-
-	if (ret < 0) {
-		dprintf(CRITICAL, "Error while trying to execute '%s': %s\n",
-			cmd, strerror(errno));
-		return ret;
-	}
-	ret = WEXITSTATUS(ret);
-	dprintf(SPEW, "Done executing '%s' (retval=%d)\n", cmd, ret);
-
-	return ret;
-}
-
-
-static int is_valid_blkdev(const char *node)
-{
-	struct stat statbuf;
-	if (stat(node, &statbuf)) {
-		dperror("stat");
-		return 0;
-	}
-	if (!S_ISBLK(statbuf.st_mode)) {
-		dprintf(CRITICAL, "%s is not a block device", node);
-		return 0;
-	}
-	return 1;
-}
-
-
-void cmd_reboot(const char *arg, void *data, unsigned sz)
-{
-	printf("Rebooting...\n");
-	fastboot_okay("");
-	sync();
-	execute_command("reboot");
-}
 
 /* Erase a named partition by creating a new empty partition on top of
  * its device node. No parameters. */
-void cmd_erase(const char *part_name, void *data, unsigned sz)
+static void cmd_erase(const char *part_name, void *data, unsigned sz)
 {
 	struct part_info *ptn;
 	char *pdevice = NULL;
 	char *cmd = NULL;
 
 	dprintf(INFO, "%s: %s\n", __func__, part_name);
-	ptn = find_part(dinfo, part_name);
+	ptn = find_part(disk_info, part_name);
 	if (ptn == NULL) {
 		fastboot_fail("unknown partition name");
 		return;
@@ -122,7 +79,11 @@ void cmd_erase(const char *part_name, void *data, unsigned sz)
 
 	printf("Erasing %s.\n", part_name);
 
-	pdevice = find_part_device(dinfo, ptn->name);
+	pdevice = find_part_device(disk_info, ptn->name);
+	if (!pdevice) {
+		fastboot_fail("find_part_device failed!");
+		die();
+	}
 	dprintf(SPEW, "destination device: %s\n", pdevice);
 	if (!is_valid_blkdev(pdevice)) {
 		fastboot_fail("invalid destination node. partition disks?");
@@ -167,7 +128,7 @@ out:
  * <name> : Lookup the named partition in disk_layout.conf and write to
  *          its corresponding device node
  */
-void cmd_flash(const char *part_name, void *data, unsigned sz)
+static void cmd_flash(const char *part_name, void *data, unsigned sz)
 {
 	FILE *fp = NULL;
 	char *cmd = NULL;
@@ -179,15 +140,15 @@ void cmd_flash(const char *part_name, void *data, unsigned sz)
 	int free_device = 0;
 
 	if (!strcmp(part_name, "disk")) {
-		device = dinfo->device;
+		device = disk_info->device;
 	} else {
 		free_device = 1;
-		device = find_part_device(dinfo, part_name);
+		device = find_part_device(disk_info, part_name);
 		if (!device) {
 			fastboot_fail("unknown partition specified");
 			return;
 		}
-		ptn = find_part(dinfo, part_name);
+		ptn = find_part(disk_info, part_name);
 	}
 
 	dprintf(SPEW, "destination device: %s\n", device);
@@ -237,7 +198,7 @@ void cmd_flash(const char *part_name, void *data, unsigned sz)
 	/* Check if we wrote to the base device node. If so,
 	 * re-sync the partition table in case we wrote out
 	 * a new one */
-	if (!strcmp(device, dinfo->device)) {
+	if (!strcmp(device, disk_info->device)) {
 		int fd = open(device, O_RDWR);
 		if (fd < 0) {
 			fastboot_fail("could not open device node");
@@ -307,7 +268,7 @@ out:
 		free(device);
 }
 
-void cmd_oem(const char *arg, void *data, unsigned sz)
+static void cmd_oem(const char *arg, void *data, unsigned sz)
 {
 	const char *command;
 	dprintf(SPEW, "%s: <%s>\n", __FUNCTION__, arg);
@@ -332,56 +293,46 @@ void cmd_oem(const char *arg, void *data, unsigned sz)
 	} else if (strncmp(command, CMD_PARTITION,
 				strlen(CMD_PARTITION)) == 0) {
 		dprintf(INFO, "Applying disk configuration\n");
-		if (apply_disk_config(dinfo, 0))
+		if (apply_disk_config(disk_info, 0))
 			fastboot_fail("apply_disk_config error");
 		else
 			fastboot_okay("");
+	} else if (strncmp(command, CMD_REBOOT,
+				strlen(CMD_REBOOT)) == 0) {
+		fastboot_okay("");
+		sync();
+		/* The "android" parameter is recognized on MFLD devices
+		 * as a directive to the OSIP driver to un-corrupt the OSIP
+		 * header so that the Android kernel will be started by the FW
+		 * instead of droidboot.  Other devices ignore it. */
+		__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
+				LINUX_REBOOT_CMD_RESTART2, "android");
+		dprintf(CRITICAL, "Reboot failed");
 	} else {
 		fastboot_fail("unknown OEM command");
 	}
 	return;
 }
 
-void cmd_boot(const char *arg, void *data, unsigned sz)
+static void cmd_boot(const char *arg, void *data, unsigned sz)
 {
-	fastboot_fail("'boot' command unimplemented");
+	fastboot_fail("boot command stubbed on this platform!");
 }
 
-int main(int argc, char **argv)
+static void cmd_continue(const char *arg, void *data, unsigned sz)
 {
-	char *config_location;
+	start_default_kernel();
+	fastboot_fail("Unable to boot default kernel!");
+}
 
-	dprintf(INFO, "DROIDBOOT START\n");
-	if (argc > 1)
-		config_location = argv[1];
-	else
-		config_location = "/system/etc/disk_layout.conf";
-
-	dprintf(INFO, "Reading disk layout from %s\n", config_location);
-	dinfo = load_diskconfig(config_location, NULL);
-	dump_disk_config(dinfo);
-
+void aboot_register_commands(void)
+{
 	fastboot_register("oem", cmd_oem);
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
-	fastboot_register("continue", cmd_reboot);
+	fastboot_register("continue", cmd_continue);
 
-#ifdef DEVICE_NAME
 	fastboot_publish("product", DEVICE_NAME);
-#endif
 	fastboot_publish("kernel", "droidboot");
-
-	scratch = malloc(MAX_SIZE_OF_SCRATCH);
-	if (scratch == NULL) {
-		printf
-		    ("ERROR: malloc failed in fastboot. Unable to continue.\n\n");
-		exit(1);
-	}
-
-	printf("Listening for the fastboot protocol on the USB OTG.\n");
-	fastboot_init(scratch, MAX_SIZE_OF_SCRATCH);
-
-	/* Shouldn't get here */
-	exit(1);
 }

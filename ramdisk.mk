@@ -41,6 +41,7 @@ droidboot_modules := \
 	tcpdump \
 	dosfstools \
 	gzip \
+	kexec \
 	droidboot
 
 droidboot_system_files = $(call module-installed-files,$(droidboot_modules))

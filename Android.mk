@@ -7,7 +7,9 @@ LOCAL_SRC_FILES := \
 	aboot.c \
 	fastboot.c \
 	util.c \
-	droidboot.c
+	droidboot.c \
+	manage_device.c \
+	update_osip.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_DEVICE)\" \
 	-W -Wall -Wno-unused-parameter -Werror

@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 #include <pthread.h>
+#include <errno.h>
+#include <string.h>
 
 /* debug levels */
 #define CRITICAL 0

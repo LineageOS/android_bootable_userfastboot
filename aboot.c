@@ -50,11 +50,10 @@
 #include "fastboot.h"
 #include "droidboot.h"
 #include "util.h"
-
+#include "update_osip.h"
 
 #define CMD_SYSTEM		"system"
 #define CMD_PARTITION		"partition"
-#define CMD_REBOOT		"reboot"
 
 #define SYSTEM_BUF_SIZ     512	/* For system() and popen() calls. */
 #define CONSOLE_BUF_SIZ    400	/* For writes to /dev/console and friends */
@@ -125,6 +124,9 @@ out:
  *
  * "disk" : Write directly to the disk node specified in disk_layout.conf,
  *          whatever it is named there.
+ * "osipX" : MFLD only, X is some integer. update OS image with a
+ *           stitched OS image. The provided image must have exactly
+ *           one OSII record in it.
  * <name> : Lookup the named partition in disk_layout.conf and write to
  *          its corresponding device node
  */
@@ -141,6 +143,15 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 
 	if (!strcmp(part_name, "disk")) {
 		device = disk_info->device;
+	} else if (!strncmp(part_name, "osip", 4)) {
+		/* Rest of the part name is the index number */
+		int entry_index = atoi(part_name + 4);
+		dprintf(INFO, "Update OSIP entry %d\n", entry_index);
+		if (write_stitch_image(data, sz, entry_index))
+			fastboot_fail("write_stitch_image failure");
+		else
+			fastboot_okay("");
+		return;
 	} else {
 		free_device = 1;
 		device = find_part_device(disk_info, part_name);
@@ -297,17 +308,6 @@ static void cmd_oem(const char *arg, void *data, unsigned sz)
 			fastboot_fail("apply_disk_config error");
 		else
 			fastboot_okay("");
-	} else if (strncmp(command, CMD_REBOOT,
-				strlen(CMD_REBOOT)) == 0) {
-		fastboot_okay("");
-		sync();
-		/* The "android" parameter is recognized on MFLD devices
-		 * as a directive to the OSIP driver to un-corrupt the OSIP
-		 * header so that the Android kernel will be started by the FW
-		 * instead of droidboot.  Other devices ignore it. */
-		__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
-				LINUX_REBOOT_CMD_RESTART2, "android");
-		dprintf(CRITICAL, "Reboot failed");
 	} else {
 		fastboot_fail("unknown OEM command");
 	}
@@ -317,6 +317,20 @@ static void cmd_oem(const char *arg, void *data, unsigned sz)
 static void cmd_boot(const char *arg, void *data, unsigned sz)
 {
 	fastboot_fail("boot command stubbed on this platform!");
+}
+
+static void cmd_reboot(const char *arg, void *data, unsigned sz)
+{
+	fastboot_okay("");
+	sync();
+	dprintf(INFO, "Rebooting!\n");
+	/* The "android" parameter is recognized on MFLD devices
+	 * as a directive to the OSIP driver to un-corrupt the OSIP
+	 * header so that the Android kernel will be started by the FW
+	 * instead of droidboot.  Other devices ignore it. */
+	__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
+			LINUX_REBOOT_CMD_RESTART2, "android");
+	dprintf(CRITICAL, "Reboot failed");
 }
 
 static void cmd_continue(const char *arg, void *data, unsigned sz)
@@ -329,6 +343,7 @@ void aboot_register_commands(void)
 {
 	fastboot_register("oem", cmd_oem);
 	fastboot_register("boot", cmd_boot);
+	fastboot_register("reboot", cmd_reboot);
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
 	fastboot_register("continue", cmd_continue);

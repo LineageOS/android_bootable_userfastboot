@@ -52,10 +52,13 @@ struct OSIP_header {		// os image profile
 	struct OSII desc[7];
 };
 
+int write_OSIP(struct OSIP_header *osip);
 int read_OSIP(struct OSIP_header *osip);
 int invalidate_payload_osip_record(void);
 int restore_payload_osip_record(void);
 int write_payload_os_image(void *data, size_t size);
 int crack_stitched_image(void *data, struct OSII **rec, void **blob);	// for debug testing.
+void dump_osip_header(struct OSIP_header *osip);
+void dump_OS_page(struct OSIP_header *osip, int os_index, int numpages);
 
 #endif

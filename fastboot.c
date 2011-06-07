@@ -305,7 +305,7 @@ again:
 				fastboot_fail("unknown reason");
 			goto again;
 		}
-
+		dprintf(CRITICAL, "unknown command '%s'\n", buffer);
 		fastboot_fail("unknown command");
 
 	}

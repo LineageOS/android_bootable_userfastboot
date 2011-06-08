@@ -22,6 +22,12 @@ service ueventd /sbin/ueventd
 
 service droidboot /system/bin/droidboot
     console
+    oneshot
 
 service console /system/bin/sh
     console
+    disabled
+
+on property:init.svc.droidboot=stopped
+    wait 2
+    start console

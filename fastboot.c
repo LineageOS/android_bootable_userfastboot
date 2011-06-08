@@ -25,6 +25,7 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+#define LOG_TAG "fastboot"
 
 #include <string.h>
 #include <stdlib.h>
@@ -33,7 +34,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "debug.h"
+#include <cutils/log.h>
+
 #include "droidboot.h"
 
 /* todo: give lk strtoul and nuke this */
@@ -158,14 +160,14 @@ static int usb_read(void *_buf, unsigned len)
 	if (fastboot_state == STATE_ERROR)
 		goto oops;
 
-	dprintf(SPEW, "usb_read %d\n", len);
+	LOGV("usb_read %d\n", len);
 	while (len > 0) {
 		xfer = (len > 4096) ? 4096 : len;
 
 		r = read(fb_fp, buf, xfer);
-		dprintf(9, "read returns %d\n", r);
+		LOGV("read returns %d\n", r);
 		if (r < 0) {
-			dprintf(INFO, "read failed\n");
+			LOGE("read failed\n");
 			goto oops;
 		}
 
@@ -182,7 +184,7 @@ static int usb_read(void *_buf, unsigned len)
 
 oops:
 	fastboot_state = STATE_ERROR;
-	dprintf(INFO, "usb_read faled: asked for %d and got %d\n", len, r);
+	LOGE("usb_read faled: asked for %d and got %d\n", len, r);
 	return -1;
 }
 
@@ -193,11 +195,11 @@ static int usb_write(void *buf, unsigned len)
 	if (fastboot_state == STATE_ERROR)
 		goto oops;
 
-	dprintf(SPEW, "usb_write %d\n", len);
+	LOGV("usb_write %d\n", len);
 	r = write(fb_fp, buf, len);
-	dprintf(SPEW, "write returns %d\n", r);
+	LOGV("write returns %d\n", r);
 	if (r < 0) {
-		dprintf(INFO, "write failed\n");
+		LOGE("write failed\n");
 		goto oops;
 	}
 
@@ -221,18 +223,19 @@ void fastboot_ack(const char *code, const char *reason)
 	snprintf(response, 64, "%s%s", code, reason);
 	fastboot_state = STATE_COMPLETE;
 
-	dprintf(SPEW, "fastboot_ack %s: %s\n", code, reason);
 	usb_write(response, strlen(response));
 
 }
 
 void fastboot_fail(const char *reason)
 {
+	LOGE("ack FAIL %s", reason);
 	fastboot_ack("FAIL", reason);
 }
 
 void fastboot_okay(const char *info)
 {
+	LOGD("ack OKAY %s", info);
 	fastboot_ack("OKAY", info);
 }
 
@@ -240,7 +243,7 @@ static void cmd_getvar(const char *arg, void *data, unsigned sz)
 {
 	struct fastboot_var *var;
 
-	dprintf(INFO, "fastboot: cmd_getvar %s\n", arg);
+	LOGD("fastboot: cmd_getvar %s\n", arg);
 	for (var = varlist; var; var = var->next) {
 		if (!strcmp(var->name, arg)) {
 			fastboot_okay(var->value);
@@ -256,7 +259,7 @@ static void cmd_download(const char *arg, void *data, unsigned sz)
 	unsigned len = hex2unsigned(arg);
 	int r;
 
-	dprintf(INFO, "fastboot: cmd_download %d bytes\n", len);
+	LOGD("fastboot: cmd_download %d bytes\n", len);
 
 	download_size = 0;
 	if (len > download_max) {
@@ -270,8 +273,7 @@ static void cmd_download(const char *arg, void *data, unsigned sz)
 
 	r = usb_read(download_base, len);
 	if ((r < 0) || ((unsigned int)r != len)) {
-		dprintf(INFO,
-			"fastboot: cmd_download errro only got %d bytes\n", r);
+		LOGE("fastboot: cmd_download errro only got %d bytes\n", r);
 		fastboot_state = STATE_ERROR;
 		return;
 	}
@@ -283,7 +285,7 @@ static void fastboot_command_loop(void)
 {
 	struct fastboot_cmd *cmd;
 	int r;
-	dprintf(INFO, "fastboot: processing commands\n");
+	LOGD("fastboot: processing commands\n");
 
 again:
 	while (fastboot_state != STATE_ERROR) {
@@ -292,7 +294,7 @@ again:
 		if (r < 0)
 			break;
 		buffer[r] = 0;
-		dprintf(INFO, "fastboot: %s\n", buffer);
+		LOGD("fastboot got command: %s\n", buffer);
 
 		for (cmd = cmdlist; cmd; cmd = cmd->next) {
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
@@ -305,12 +307,12 @@ again:
 				fastboot_fail("unknown reason");
 			goto again;
 		}
-		dprintf(CRITICAL, "unknown command '%s'\n", buffer);
+		LOGE("unknown command '%s'\n", buffer);
 		fastboot_fail("unknown command");
 
 	}
 	fastboot_state = STATE_OFFLINE;
-	dprintf(INFO, "fastboot: oops!\n");
+	LOGE("fastboot: oops!\n");
 }
 
 static int fastboot_handler(void *arg)
@@ -338,7 +340,7 @@ static int fastboot_handler(void *arg)
 
 int fastboot_init(void *base, unsigned size)
 {
-	dprintf(INFO, "fastboot_init()\n");
+	LOGV("fastboot_init()\n");
 	download_max = size;
 	download_base = base;
 

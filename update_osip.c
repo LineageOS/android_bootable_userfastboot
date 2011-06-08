@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#define LOG_TAG "osip"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,9 +26,11 @@
 #include <getopt.h>
 #include <unistd.h>
 
+#include <cutils/log.h>
+
 #include "update_osip.h"
 #include "manage_device.h"
-#include "debug.h"
+#include "droidboot.h"
 
 #define BACKUP_LOC 0xE0
 #define OSIP_PREAMBLE 0x20
@@ -69,17 +71,17 @@ static int get_page_size(void)
 	memset((void *)buf, 0, sizeof(buf));
 	fd = open(MMC_PAGE_SIZE, O_RDONLY);
 	if (fd < 0) {
-		dperror("open");
+		LOGPERROR("open");
 		return -1;
 	}
 	if (read(fd, buf, 16) < 0) {
-		dperror("read");
+		LOGPERROR("read");
 		close(fd);
 		return -1;
 	}
-	dprintf(INFO, "page size %s\n", buf);
+	LOGV("page size %s\n", buf);
 	if (sscanf(buf, "%d", &mmc_page_size) != 1) {
-		dperror("sscanf");
+		LOGPERROR("sscanf");
 		close(fd);
 		return -1;
 	}
@@ -109,22 +111,22 @@ int write_stitch_image(void *data, size_t size, int update_number)
 	int page_size = get_page_size();
 	int fd;
 
-	dprintf(INFO, "now into write_stitch_image\n");
+	LOGI("now into write_stitch_image\n");
 	if (block_size < 0) {
-		dprintf(CRITICAL, "block size wrong\n");
+		LOGE("block size wrong\n");
 		return -1;
 	}
 	if (crack_stitched_image(data, &osii, &blob) < 0) {
-		dprintf(CRITICAL, "crack_stitched_image fails\n");
+		LOGE("crack_stitched_image fails\n");
 		return -1;
 	}
 	if ((osii->size_of_os_image * STITCHED_IMAGE_PAGE_SIZE) !=
 	    size - STITCHED_IMAGE_BLOCK_SIZE) {
-		dprintf(CRITICAL, "data format is not correct! \n");
+		LOGE("data format is not correct! \n");
 		return -1;
 	}
 	if (read_OSIP_loc(&osip, R_START, NOT_DUMP) < 0) {
-		dprintf(CRITICAL, "read_OSIP fails\n");
+		LOGE("read_OSIP fails\n");
 		return -1;
 	}
 
@@ -135,22 +137,22 @@ int write_stitch_image(void *data, size_t size, int update_number)
 	    (osii->size_of_os_image * STITCHED_IMAGE_PAGE_SIZE) / page_size + 1;
 
 	memcpy(&(osip.desc[update_number]), osii, sizeof(struct OSII));
-	dprintf(SPEW, "os_rev_major=0x%x,os_rev_minor=0x%x,ddr_load_address=0x%x\n",
+	LOGV("os_rev_major=0x%x,os_rev_minor=0x%x,ddr_load_address=0x%x\n",
 	       osii->os_rev_major, osii->os_rev_minor, osii->ddr_load_address);
-	dprintf(SPEW, "entry_point=0x%x,sizeof_osimage=0x%x,attribute=0x%x\n",
+	LOGV("entry_point=0x%x,sizeof_osimage=0x%x,attribute=0x%x\n",
 	       osii->entery_point, osii->size_of_os_image, osii->attribute);
 
 	write_OSIP(&osip);
 
 	fd = open(MMC_DEV_POS, O_RDWR);
 	if (fd < 0) {
-		dprintf(CRITICAL, "fail open %s\n", MMC_DEV_POS);
+		LOGE("fail open %s\n", MMC_DEV_POS);
 		return -1;
 	}
 	lseek(fd, osii->logical_start_block * block_size, SEEK_SET);
 	if (write(fd, blob, size - STITCHED_IMAGE_BLOCK_SIZE) <
 	    (int)(size - STITCHED_IMAGE_BLOCK_SIZE)) {
-		dprintf(INFO, "fail write of blob\n");
+		LOGE("fail write of blob\n");
 		close(fd);
 		return -1;
 	}
@@ -166,11 +168,6 @@ static int read_OSIP_loc(struct OSIP_header *osip, int location, int dump)
 {
 	int fd;
 
-	if (!location)
-		dprintf(INFO, "**************into read_OSIP*********************\n");
-	else
-		printf
-		    ("==============into read_OSIP from backup location====\n");
 	memset((void *)osip, 0, sizeof(*osip));
 	fd = open(MMC_DEV_POS, O_RDONLY);
 	if (fd < 0)
@@ -182,23 +179,22 @@ static int read_OSIP_loc(struct OSIP_header *osip, int location, int dump)
 		lseek(fd, 0, SEEK_SET);
 
 	if (read(fd, (void *)osip, sizeof(*osip)) < 0) {
-		dprintf(INFO, "read of osip failed\n");
+		LOGI("read of osip failed\n");
 		close(fd);
 		return -1;
 	}
 	close(fd);
 
 	if (osip->sig != OSIP_SIG) {
-		printf
-		    ("Invalid OSIP header detected!\n++++++++++++++++++!\n");
+		LOGE("Invalid OSIP header detected!");
 	}
 
 	if ((dump) &&(osip->sig == OSIP_SIG)) {
 		dump_osip_header(osip);
 		if (location)
-			dprintf(INFO, "read of osip  from BACKUP_LOC works\n");
+			LOGV("read of osip from BACKUP_LOC works\n");
 		else
-			dprintf(INFO, "read of osip works\n");
+			LOGV("read of osip works\n");
 	}
 
 	return 1;

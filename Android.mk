@@ -16,7 +16,7 @@ LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_DEVICE)\" \
 
 LOCAL_MODULE := droidboot
 LOCAL_MODULE_TAGS := optional
-LOCAL_SHARED_LIBRARIES := libdiskconfig
+LOCAL_SHARED_LIBRARIES := libdiskconfig liblog
 
 include $(BUILD_EXECUTABLE)
 

@@ -28,6 +28,7 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+#define LOG_TAG "droidboot"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -44,9 +45,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cutils/log.h>
 #include <diskconfig/diskconfig.h>
 
-#include "debug.h"
 #include "fastboot.h"
 #include "droidboot.h"
 #include "util.h"
@@ -69,21 +70,21 @@ static void cmd_erase(const char *part_name, void *data, unsigned sz)
 	char *pdevice = NULL;
 	char *cmd = NULL;
 
-	dprintf(INFO, "%s: %s\n", __func__, part_name);
+	LOGI("%s: %s\n", __func__, part_name);
 	ptn = find_part(disk_info, part_name);
 	if (ptn == NULL) {
 		fastboot_fail("unknown partition name");
 		return;
 	}
 
-	printf("Erasing %s.\n", part_name);
+	LOGD("Erasing %s.\n", part_name);
 
 	pdevice = find_part_device(disk_info, ptn->name);
 	if (!pdevice) {
 		fastboot_fail("find_part_device failed!");
 		die();
 	}
-	dprintf(SPEW, "destination device: %s\n", pdevice);
+	LOGV("destination device: %s\n", pdevice);
 	if (!is_valid_blkdev(pdevice)) {
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out;
@@ -146,7 +147,7 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 	} else if (!strncmp(part_name, "osip", 4)) {
 		/* Rest of the part name is the index number */
 		int entry_index = atoi(part_name + 4);
-		dprintf(INFO, "Update OSIP entry %d\n", entry_index);
+		LOGI("Update OSIP entry %d\n", entry_index);
 		if (write_stitch_image(data, sz, entry_index))
 			fastboot_fail("write_stitch_image failure");
 		else
@@ -162,7 +163,7 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 		ptn = find_part(disk_info, part_name);
 	}
 
-	dprintf(SPEW, "destination device: %s\n", device);
+	LOGD("Writing %u bytes to destination device: %s\n", sz, device);
 	if (!is_valid_blkdev(device)) {
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out;
@@ -179,16 +180,16 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 	}
 
 	if (asprintf(&cmd, cmd_base, device) < 0) {
-		dperror("asprintf");
+		LOGPERROR("asprintf");
 		cmd = NULL;
 		fastboot_fail("memory allocation error");
 		goto out;
 	}
 
-	dprintf(SPEW, "command: %s\n", cmd);
+	LOGV("command: %s\n", cmd);
 	fp = popen(cmd, "w");
 	if (!fp) {
-		dperror("popen");
+		LOGPERROR("popen");
 		fastboot_fail("popen failure");
 		goto out;
 	}
@@ -196,7 +197,7 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 	cmd = NULL;
 
 	if (sz != fwrite(data, 1, sz, fp)) {
-		dperror("fwrite");
+		LOGPERROR("fwrite");
 		fastboot_fail("image write failure");
 		goto out;
 	}
@@ -204,7 +205,7 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 	fp = NULL;
 	sync();
 
-	dprintf(SPEW, "wrote %u bytes to %s\n", sz, device);
+	LOGD("wrote %u bytes to %s\n", sz, device);
 
 	/* Check if we wrote to the base device node. If so,
 	 * re-sync the partition table in case we wrote out
@@ -215,7 +216,7 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 			fastboot_fail("could not open device node");
 			goto out;
 		}
-		dprintf(SPEW, "sync partition table\n");
+		LOGV("sync partition table\n");
 		ioctl(fd, BLKRRPART, NULL);
 		close(fd);
 	}
@@ -282,7 +283,7 @@ out:
 static void cmd_oem(const char *arg, void *data, unsigned sz)
 {
 	const char *command;
-	dprintf(SPEW, "%s: <%s>\n", __FUNCTION__, arg);
+	LOGV("%s: <%s>\n", __FUNCTION__, arg);
 
 	while (*arg == ' ')
 		arg++;
@@ -295,15 +296,15 @@ static void cmd_oem(const char *arg, void *data, unsigned sz)
 			arg++;
 		retval = execute_command(arg);
 		if (retval != 0) {
-			printf("\nfails: %s (return value %d)\n", arg, retval);
+			LOGE("\nfails: %s (return value %d)\n", arg, retval);
 			fastboot_fail("OEM system command failed");
 		} else {
-			printf("\nsucceeds: %s\n", arg);
+			LOGV("\nsucceeds: %s\n", arg);
 			fastboot_okay("");
 		}
 	} else if (strncmp(command, CMD_PARTITION,
 				strlen(CMD_PARTITION)) == 0) {
-		dprintf(INFO, "Applying disk configuration\n");
+		LOGI("Applying disk configuration\n");
 		if (apply_disk_config(disk_info, 0))
 			fastboot_fail("apply_disk_config error");
 		else
@@ -323,14 +324,14 @@ static void cmd_reboot(const char *arg, void *data, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
-	dprintf(INFO, "Rebooting!\n");
+	LOGI("Rebooting!\n");
 	/* The "android" parameter is recognized on MFLD devices
 	 * as a directive to the OSIP driver to un-corrupt the OSIP
 	 * header so that the Android kernel will be started by the FW
 	 * instead of droidboot.  Other devices ignore it. */
 	__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
 			LINUX_REBOOT_CMD_RESTART2, "android");
-	dprintf(CRITICAL, "Reboot failed");
+	LOGE("Reboot failed");
 }
 
 static void cmd_continue(const char *arg, void *data, unsigned sz)

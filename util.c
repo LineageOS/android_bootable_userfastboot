@@ -28,6 +28,7 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+#define LOG_TAG "droidboot"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -40,16 +41,15 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cutils/log.h>
 #include <diskconfig/diskconfig.h>
 
 #include "util.h"
-#include "debug.h"
 #include "droidboot.h"
 
 void die(void)
 {
-	dprintf(CRITICAL,
-		"droidboot has encountered an unrecoverable problem, exiting!\n");
+	LOGE("droidboot has encountered an unrecoverable problem, exiting!\n");
 	exit(1);
 }
 
@@ -66,7 +66,7 @@ char *mount_partition(struct part_info *ptn)
 
 	pdevice = find_part_device(disk_info, ptn->name);
 	if (!pdevice) {
-		dperror("malloc");
+		LOGPERROR("malloc");
 		goto out;
 	}
 
@@ -83,21 +83,21 @@ char *mount_partition(struct part_info *ptn)
 
 	ret = asprintf(&mountpoint, "/mnt/%s", strrchr(pdevice, '/') + 1);
 	if (ret < 0) {
-		dperror("asprintf");
+		LOGPERROR("asprintf");
 		goto out;
 	}
 
 	ret = mkdir(mountpoint, 0777);
 	if (ret && errno != EEXIST) {
-		dperror("mkdir");
+		LOGPERROR("mkdir");
 		goto out;
 	}
 
-	dprintf(INFO, "Mounting %s (%s) --> %s\n", pdevice,
+	LOGD("Mounting %s (%s) --> %s\n", pdevice,
 			fstype, mountpoint);
 	ret = mount(pdevice, mountpoint, fstype, MS_SYNCHRONOUS, "");
 	if (ret && errno != EBUSY) {
-		dperror("mount");
+		LOGPERROR("mount");
 		goto out;
 	}
 
@@ -119,16 +119,16 @@ int execute_command(const char *cmd)
 {
 	int ret;
 
-	dprintf(SPEW, "Executing: '%s'\n", cmd);
+	LOGD("Executing: '%s'\n", cmd);
 	ret = system(cmd);
 
 	if (ret < 0) {
-		dprintf(CRITICAL, "Error while trying to execute '%s': %s\n",
+		LOGE("Error while trying to execute '%s': %s\n",
 			cmd, strerror(errno));
 		return ret;
 	}
 	ret = WEXITSTATUS(ret);
-	dprintf(SPEW, "Done executing '%s' (retval=%d)\n", cmd, ret);
+	LOGD("Done executing '%s' (retval=%d)\n", cmd, ret);
 
 	return ret;
 }
@@ -138,11 +138,11 @@ int is_valid_blkdev(const char *node)
 {
 	struct stat statbuf;
 	if (stat(node, &statbuf)) {
-		dperror("stat");
+		LOGPERROR("stat");
 		return 0;
 	}
 	if (!S_ISBLK(statbuf.st_mode)) {
-		dprintf(CRITICAL, "%s is not a block device", node);
+		LOGE("%s is not a block device", node);
 		return 0;
 	}
 	return 1;
@@ -160,13 +160,13 @@ int kexec_linux(char *kernel, char *initrd, char *cmdline)
 	/* Read the kernel command line */
 	fd = open(cmdline, O_RDONLY);
 	if (fd < 0) {
-		dprintf(CRITICAL, "can't open %s: %s", cmdline,
+		LOGE("can't open %s: %s", cmdline,
 				strerror(errno));
 		return -1;
 	}
 	bytes_read = read(fd, cmdline_buf, sizeof(cmdline_buf) - 1);
 	if (bytes_read < 0) {
-		dperror("read");
+		LOGPERROR("read");
 		return -1;
 	}
 	cmdline_buf[bytes_read] = '\0';
@@ -177,7 +177,7 @@ int kexec_linux(char *kernel, char *initrd, char *cmdline)
 		kernel, initrd, cmdline_buf);
 	ret = execute_command(kexec_cmd);
 	if (ret != 0) {
-		dprintf(CRITICAL, "kexec load failed! (ret=%d)\n", ret);
+		LOGE("kexec load failed! (ret=%d)\n", ret);
 		return -1;
 	}
 
@@ -188,7 +188,7 @@ int kexec_linux(char *kernel, char *initrd, char *cmdline)
 	execute_command(kexec_cmd);
 
 	/* Shouldn't get here! */
-	dprintf(CRITICAL, "kexec failed!\n");
+	LOGE("kexec failed!\n");
 	return -1;
 }
 

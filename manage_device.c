@@ -58,6 +58,7 @@
  * The OSII record for the provisioning OS is the desc[1]
  * there are no others supported.
  */
+#define LOG_TAG "osip"
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -66,8 +67,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <cutils/log.h>
+
 #include "manage_device.h"
-#include "debug.h"
 
 #define PAYLOAD_OSII_REC 0
 #define POS_OSII_REC 1
@@ -106,17 +108,17 @@ static int get_page_size(void)
 	memset((void *)buf, 0, sizeof(buf));
 	fd = open(MMC_PAGE_SIZE, O_RDONLY);
 	if (fd < 0) {
-		dprintf(CRITICAL, "open mmc page size failed\n");
+		LOGE("open mmc page size failed\n");
 		return -1;
 	}
 	if (read(fd, buf, 16) < 0) {
-		dprintf(CRITICAL, "read of mmc page size failed\n");
+		LOGE("read of mmc page size failed\n");
 		close(fd);
 		return -1;
 	}
-	dprintf(SPEW, "page size %s\n", buf);
+	LOGV("page size %s\n", buf);
 	if (sscanf(buf, "%d", &mmc_page_size) != 1) {
-		dprintf(CRITICAL, "sscanf of mmc page size failed\n");
+		LOGE("sscanf of mmc page size failed\n");
 		close(fd);
 		return -1;
 	}
@@ -138,20 +140,20 @@ void dump_osip_header(struct OSIP_header *osip)
 {
 	int i;
 
-	printf
+	LOGV
 	    ("sig 0x%x, header_size 0x%hx, header_rev_minor 0x%hhx, header_rev_major 0x%hhx\n",
 	     osip->sig, osip->header_size, osip->header_rev_minor,
 	     osip->header_rev_major);
-	printf
+	LOGV
 	    ("header_checksum 0x%hhx, num_pointers 0x%hhx, num_images 0x%hhx\n",
 	     osip->header_checksum, osip->num_pointers, osip->num_images);
 
 	for (i = 0; i < osip->num_pointers; i++) {
-		printf
+		LOGV
 		    (" os_rev = 0x%0hx, os_rev = 0x%hx, logcial_start_block = 0x%x\n",
 		     osip->desc[i].os_rev_minor, osip->desc[i].os_rev_major,
 		     osip->desc[i].logical_start_block);
-		printf
+		LOGV
 		    (" ddr_load_address = 0x%0x, entry_point = 0x%0x, size_of_os_image= 0x%x,attribute= 0x%x\n",
 		     osip->desc[i].ddr_load_address, osip->desc[i].entery_point,
 		     osip->desc[i].size_of_os_image,osip->desc[i].attribute);
@@ -167,11 +169,11 @@ void dump_OS_page(struct OSIP_header *osip, int os_index, int numpages)
 	unsigned short *temp;
 
 	i = os_index;
-	printf
+	LOGV
 	    (" os_rev = 0x%0hx, os_rev = 0x%0hx, logcial_start_block = 0x%0x\n",
 	     osip->desc[i].os_rev_minor, osip->desc[i].os_rev_major,
 	     osip->desc[i].logical_start_block);
-	printf
+	LOGV
 	    (" ddr_load_address = 0x%0x, entry_point = 0x%0x, size_of_os_image= 0x%x\n",
 	     osip->desc[i].ddr_load_address, osip->desc[i].entery_point,
 	     osip->desc[i].size_of_os_image);
@@ -185,14 +187,14 @@ void dump_OS_page(struct OSIP_header *osip, int os_index, int numpages)
 		      * blocksize, SEEK_SET);
 		memset((void *)buffer, 0, sizeof(buffer));
 		if (read(fd, (void *)buffer, sizeof(buffer)) < (int)sizeof(buffer)) {
-			dprintf(CRITICAL, "read failed\n");
+			LOGE("read failed\n");
 			close(fd);
 			return;
 		}
 		close(fd);
 		for (j = 0; j < pagesize / 0x10; j++) {
 			temp = (uint16 *) (buffer + j * 0x10);
-			printf("%x %hx %hx %hx %hx %hx %hx %hx %hx\n",
+			LOGV("%x %hx %hx %hx %hx %hx %hx %hx %hx\n",
 			       osip->desc[os_index].logical_start_block *
 			       blocksize + i * pagesize + j * 0x10, temp[0],
 			       temp[1], temp[2], temp[3], temp[4], temp[5],
@@ -207,7 +209,7 @@ int read_OSIP(struct OSIP_header *osip)
 	int lba_size;
 	int fd;
 
-	dprintf(SPEW, "into read_OSIP\n");
+	LOGV("into read_OSIP\n");
 	memset((void *)osip, 0, sizeof(*osip));
 	lba_size = get_block_size();
 	fd = open(MMC_DEV_POS, O_RDONLY);
@@ -215,12 +217,12 @@ int read_OSIP(struct OSIP_header *osip)
 		return -1;
 	lseek(fd, 0, SEEK_SET);
 	if (read(fd, (void *)osip, sizeof(*osip)) < 0) {
-		dprintf(CRITICAL, "read of osip failed\n");
+		LOGE("read of osip failed\n");
 		close(fd);
 		return -1;
 	}
 	close(fd);
-	dprintf(SPEW, "read of osip works\n");
+	LOGV("read of osip works\n");
 	dump_osip_header(osip);
 
 	return 1;
@@ -243,13 +245,13 @@ int write_OSIP(struct OSIP_header *osip)
 	lba_size = get_block_size();
 	fd = open(MMC_DEV_POS, O_RDWR);
 	if (fd < 0) {
-		dprintf(CRITICAL, "fail to open %s\n", MMC_DEV_POS);
+		LOGE("fail to open %s\n", MMC_DEV_POS);
 		return -1;
 	}
 	lseek(fd, 0, SEEK_SET);
 	if (write(fd, (void *)osip, sizeof(*osip)) < 0) {
 		close(fd);
-		dprintf(CRITICAL, "fail writing osip\n");
+		LOGE("fail writing osip\n");
 		return -1;
 	}
 	fsync(fd);
@@ -257,7 +259,7 @@ int write_OSIP(struct OSIP_header *osip)
 
 	dump_osip_header(osip);
 	//TODO: look for a way to flush nand
-	dprintf(SPEW, "write of osip worked\n");
+	LOGV("write of osip worked\n");
 	return 1;
 }
 
@@ -267,7 +269,7 @@ int crack_stitched_image(void *data, struct OSII **rec, void **blob)
 	if (!data)
 		return -1;
 	if (((struct OSIP_header *)data)->num_images != 1) {
-		dprintf(CRITICAL, "too many osii records in stiched data\n");
+		LOGE("too many osii records in stiched data\n");
 		return -1;
 	}			// we only know how to deal with trivial OS packages.
 
@@ -285,7 +287,7 @@ static int invalidate_osip_record(int i)
 	int attribute;
 
 	if (read_OSIP(&osip) < 0) {
-		dprintf(CRITICAL, "fail reading OSIP\n");
+		LOGE("fail reading OSIP\n");
 		return -1;	//FAIL
 	}
 
@@ -298,7 +300,7 @@ static int invalidate_osip_record(int i)
 	osip.desc[i].attribute = attribute;
 
 	if (write_OSIP(&osip) < 0) {
-		dprintf(CRITICAL, "fail write OSIP\n");
+		LOGE("fail write OSIP\n");
 		return -1;	//FAIL
 	}
 
@@ -315,7 +317,7 @@ int restore_payload_osip_record(void)
 	struct OSIP_header osip;
 
 	if (read_OSIP(&osip) < 0) {
-		dprintf(CRITICAL, "read_OSIP fails\n");
+		LOGE("read_OSIP fails\n");
 		return -1;	/*FAIL */
 	}
 
@@ -325,7 +327,7 @@ int restore_payload_osip_record(void)
 	    osip.desc[POS_OSII_REC].entery_point;
 
 	if (write_OSIP(&osip) < 0) {
-		dprintf(CRITICAL, "fail write OSIP\n");
+		LOGE("fail write OSIP\n");
 		return -1;	//FAIL
 	}
 
@@ -342,20 +344,20 @@ int write_payload_os_image(void *data, size_t size)
 	int fd;
 
 	if (block_size < 0) {
-		dprintf(CRITICAL, "block size wrong\n");
+		LOGE("block size wrong\n");
 		return -1;	//FAIL
 	}
 	if (crack_stitched_image(data, &osii, &blob) < 0) {
-		dprintf(CRITICAL, "crack_stitched_image fails\n");
+		LOGE("crack_stitched_image fails\n");
 		return -1;	//fail
 	}
 	if ((osii->size_of_os_image * STITCHED_IMAGE_PAGE_SIZE) !=
 	    size - STITCHED_IMAGE_BLOCK_SIZE) {
-		dprintf(CRITICAL, "data format is not correct! \n");
+		LOGE("data format is not correct! \n");
 		return -1;	//fail
 	}
 	if (read_OSIP(&osip) < 0) {
-		dprintf(CRITICAL, "read_OSIP fails\n");
+		LOGE("read_OSIP fails\n");
 		return -1;	//FAIL
 	}
 
@@ -375,13 +377,13 @@ int write_payload_os_image(void *data, size_t size)
 
 	fd = open(MMC_DEV_POS, O_RDWR);
 	if (fd < 0) {
-		dprintf(CRITICAL, "fail open %s\n", MMC_DEV_POS);
+		LOGE("fail open %s\n", MMC_DEV_POS);
 		return -1;	//FAIL
 	}
 	lseek(fd, osii->logical_start_block * block_size, SEEK_SET);
 	if (write(fd, blob, size - STITCHED_IMAGE_BLOCK_SIZE) <
 	    (int)(size - STITCHED_IMAGE_BLOCK_SIZE)) {
-		dprintf(CRITICAL, "fail write of blob\n");
+		LOGE("fail write of blob\n");
 		close(fd);
 		return -1;	//fail
 	}

@@ -1,6 +1,9 @@
 #ifndef _DROIDBOOT_H_
 #define _DROIDBOOT_H_
 
+#include <errno.h>
+#include <string.h>
+
 #define MEGABYTE	(1024 * 1024)
 
 void disable_autoboot(void);
@@ -23,5 +26,7 @@ extern struct disk_info *disk_info;
 
 #define DISK_CONFIG_LOCATION	"/system/etc/disk_layout.conf"
 #define DROIDBOOT_VERSION	"0.3"
+
+#define LOGPERROR(x)	LOGE("%s failed: %s", x, strerror(errno))
 
 #endif

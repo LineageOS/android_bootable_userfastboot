@@ -179,15 +179,11 @@ static void *input_listener_thread(void *arg)
 					 * Ignore the event. */
 					continue;
 				default:
+					LOGD("disable autoboot due to key");
 					disable_autoboot();
 					goto out;
 				}
 				break;
-			case EV_ABS:
-			case EV_REL:
-				/* Mouse or touchscreen */
-				disable_autoboot();
-				goto out;
 			default:
 				continue;
 			}

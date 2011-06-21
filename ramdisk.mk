@@ -65,6 +65,7 @@ droidboot_etc_out := $(droidboot_system_out)/etc
 droidboot_initrc := $(LOCAL_PATH)/init.rc
 
 DROIDBOOT_RAMDISK := $(droidboot_out)/ramdisk-droidboot.img.gz
+DROIDBOOT_BOOTIMAGE := $(droidboot_out)/droidboot.img
 
 # NOTE: You'll need to pass f_adb.fastboot=1 on the kernel command line
 # so that the ADB driver exports the right protocol
@@ -92,6 +93,21 @@ $(DROIDBOOT_RAMDISK): \
 	cp -f $(TARGET_DISK_LAYOUT_CONFIG) $(droidboot_etc_out)/disk_layout.conf
 	$(MKBOOTFS) $(droidboot_root_out) | gzip > $@
 
+# Create a standard Android bootimage using the regular kernel and the
+# droidboot ramdisk.
+$(DROIDBOOT_BOOTIMAGE): \
+		$(INSTALLED_KERNEL_TARGET) \
+		$(DROIDBOOT_RAMDISK) \
+		$(BOARD_KERNEL_CMDLINE_FILE) \
+		$(MKBOOTIMG)
+	$(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
+		     --ramdisk $(DROIDBOOT_RAMDISK) \
+		     --cmdline "f_adb.fastboot=1 $(BOARD_KERNEL_CMDLINE)" \
+		     --output $@
 
 .PHONY: droidboot-ramdisk
 droidboot-ramdisk: $(DROIDBOOT_RAMDISK)
+
+.PHONY: droidboot
+droidboot: $(DROIDBOOT_BOOTIMAGE)
+

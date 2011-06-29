@@ -32,6 +32,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/ext3_fs.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,11 +57,7 @@
 #define CMD_SYSTEM		"system"
 #define CMD_PARTITION		"partition"
 
-#define SYSTEM_BUF_SIZ     512	/* For system() and popen() calls. */
-#define CONSOLE_BUF_SIZ    400	/* For writes to /dev/console and friends */
-#define PARTITION_NAME_SIZ 100	/* Partition names (/mnt/boot) */
-
-
+#define EXT_SUPERBLOCK_OFFSET	1024
 
 /* Erase a named partition by creating a new empty partition on top of
  * its device node. No parameters. */
@@ -141,6 +138,7 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 	struct part_info *ptn = NULL;
 	unsigned char *data_bytes = (unsigned char *)data;
 	int free_device = 0;
+	int do_ext_checks = 0;
 
 	if (!strcmp(part_name, "disk")) {
 		device = disk_info->device;
@@ -221,8 +219,34 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 		close(fd);
 	}
 
-	/* If this is an ext partition... */
+	/* Make sure this is really an ext4 partition before we try to
+	 * run some disk checks and resize it, ptn->type isn't sufficient
+	 * information */
 	if (ptn && ptn->type == PC_PART_TYPE_LINUX) {
+		/* EXT4 uses same superblock struct and s_magic */
+		struct ext3_super_block superblock;
+		int fd = open(device, O_RDWR);
+		if (fd < 0) {
+			fastboot_fail("could not open device node");
+			goto out;
+		}
+		if (lseek(fd, EXT_SUPERBLOCK_OFFSET, SEEK_SET) !=
+				EXT_SUPERBLOCK_OFFSET) {
+			fastboot_fail("could not seek to superblock offset");
+			close(fd);
+			goto out;
+		}
+		if (read(fd, &superblock, sizeof(superblock)) != sizeof(superblock)) {
+			fastboot_fail("couldn't read superblock");
+			close(fd);
+			goto out;
+		}
+		close(fd);
+		if (EXT3_SUPER_MAGIC == superblock.s_magic) {
+			do_ext_checks = 1;
+		}
+	}
+	if (do_ext_checks) {
 		/* Resize the filesystem to fill the partition */
 		if (asprintf(&cmd, "/system/bin/resize2fs -F %s",
 					device) < 0) {

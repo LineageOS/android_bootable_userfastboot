@@ -160,7 +160,7 @@ static void *input_listener_thread(void *arg)
 			/* read the event */
 			deb = read(i, &event, sizeof(event));
 			if (deb != sizeof(event)) {
-				LOGE("Unable to read event from fd=%d,"
+				LOGV("Unable to read event from fd=%d,"
 						" deb=%d, errno=%d\n",
 						i, deb, errno);
 				continue;

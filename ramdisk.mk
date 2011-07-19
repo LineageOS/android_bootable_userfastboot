@@ -65,7 +65,7 @@ droidboot_etc_out := $(droidboot_system_out)/etc
 droidboot_initrc := $(LOCAL_PATH)/init.rc
 
 DROIDBOOT_RAMDISK := $(droidboot_out)/ramdisk-droidboot.img.gz
-DROIDBOOT_BOOTIMAGE := $(droidboot_out)/droidboot.img
+DROIDBOOT_BOOTIMAGE := $(PRODUCT_OUT)/droidboot.img
 
 # NOTE: You'll need to pass f_adb.fastboot=1 on the kernel command line
 # so that the ADB driver exports the right protocol

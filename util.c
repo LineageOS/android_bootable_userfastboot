@@ -386,6 +386,7 @@ int kexec_linux(char *basepath)
 	bytes_read = read(fd, cmdline_buf, sizeof(cmdline_buf) - 1);
 	if (bytes_read < 0) {
 		pr_perror("read");
+		close(fd);
 		return -1;
 	}
 	cmdline_buf[bytes_read] = '\0';
@@ -396,6 +397,7 @@ int kexec_linux(char *basepath)
 		basepath, basepath, cmdline_buf);
 	if (ret != 0) {
 		pr_error("kexec load failed! (ret=%d)\n", ret);
+		close(fd);
 		return -1;
 	}
 	fastboot_okay("");
@@ -406,6 +408,7 @@ int kexec_linux(char *basepath)
 
 	/* Shouldn't get here! */
 	pr_error("kexec failed!\n");
+	close(fd);
 	return -1;
 }
 
@@ -448,7 +451,8 @@ void apply_sw_update(const char *location, int send_fb_ok)
 		fastboot_okay("");
 	android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
 out:
-	unmount_partition(cacheptn);
+	if(cacheptn)
+		unmount_partition(cacheptn);
 	free(cmdline);
 }
 

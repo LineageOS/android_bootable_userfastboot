@@ -459,12 +459,9 @@ int main(int argc, char **argv)
 {
 	char *config_location;
 	pthread_t t_auto, t_input;
-	Volume *vol;
-
 
 	/* initialize libminui */
 	ui_init();
-
 
 	pr_info(" -- Droidboot %s for %s --\n", DROIDBOOT_VERSION, DEVICE_NAME);
 	import_kernel_cmdline(parse_cmdline_option);
@@ -513,10 +510,6 @@ int main(int argc, char **argv)
 		pr_perror("pthread_create");
 		die();
 	}
-
-	vol = volume_for_path(SDCARD_VOLUME);
-	if (vol)
-		try_update_sw(vol, 1);
 
 	if (g_use_autoboot && !g_update_location) {
 		if (pthread_create(&t_auto, NULL, autoboot_thread, NULL)) {

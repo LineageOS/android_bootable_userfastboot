@@ -58,6 +58,11 @@
 #define CMD_SYSTEM		"system"
 #define CMD_SHOWTEXT		"showtext"
 
+struct flash_target {
+	char *name;
+	Hashmap *params;
+};
+
 Hashmap *flash_cmds;
 Hashmap *oem_cmds;
 
@@ -69,6 +74,50 @@ static bool strcompare(void *keyA, void *keyB)
 static int strhash(void *key)
 {
 	return hashmapHash(key, strlen((char *)key));
+}
+
+static void process_target(char *targetspec, struct flash_target *tgt)
+{
+	char *params;
+	char *paramtoken;
+	char *saveptr;
+	int no_params = 0;
+
+	params = strchr(targetspec, ':');
+	if (!params)
+		no_params = 1;
+	else {
+		*params = '\0';
+		params++;
+	}
+
+	tgt->name = targetspec;
+	pr_verbose("target name: %s\n", targetspec);
+
+	tgt->params = hashmapCreate(8, strhash, strcompare);
+	if (!tgt->params) {
+		pr_error("Memory allocation failure");
+		die();
+	}
+
+	if (no_params)
+		return;
+
+	for ( ; ; params = NULL) {
+		char *argument;
+
+		paramtoken = strtok_r(params, ",", &saveptr);
+		if (paramtoken == NULL)
+			break;
+
+		argument = strchr(paramtoken, '=');
+		if (argument) {
+			*argument = '\0';
+			argument++;
+		}
+		pr_verbose("option: '%s' argument: '%s'\n", paramtoken, argument);
+		hashmapPut(tgt->params, paramtoken, argument);
+	}
 }
 
 static int aboot_register_cmd(Hashmap *map, char *key, void *callback)
@@ -103,7 +152,7 @@ int aboot_register_oem_cmd(char *key, oem_func callback)
 
 /* Erase a named partition by creating a new empty partition on top of
  * its device node. No parameters. */
-static void cmd_erase(const char *part_name, void *data, unsigned sz)
+static void cmd_erase(char *part_name, void *data, unsigned sz)
 {
 	struct part_info *ptn;
 
@@ -142,7 +191,7 @@ static int cmd_flash_update(void *data, unsigned sz)
 
 	/* Once the update is applied this file is deleted */
 	if (named_file_write("/mnt/" CACHE_PTN "/droidboot.update.zip",
-				data, sz)) {
+				data, sz, 0, 0)) {
 		pr_error("Couldn't write update package to " CACHE_PTN
 				" partition.\n");
 		unmount_partition(cacheptn);
@@ -158,55 +207,116 @@ static int cmd_flash_update(void *data, unsigned sz)
  * usage is to write to a disk device node, in order to flash a raw
  * partition, but can be used to write any file.
  *
- * The parameter part_name can be one of several possibilities:
+ * The parameter targetspec can be one of several possibilities:
  *
  * "disk" : Write directly to the disk node specified in disk_layout.conf,
  *          whatever it is named there.
  * <name> : Look in the flash_cmds table and execute the callback function.
  *          If not found, lookup the named partition in disk_layout.conf 
  *          and write to its corresponding device node
+ *
+ * Targetspec may also specify a comma separated list of parameters
+ * delimited from the target name by a colon. Each parameter is either
+ * a simple string (for flags) or param=value.
+ *
+ * For flash commands not handled by a plug-in, the following parameters
+ * can be set:
+ *
+ * noaction   : Do not perform any action after flashing the data. This is
+ *              needed when breaking up a large image into chunks which
+ *              have to be flashed separately; action should only be taken
+ *              on the last one.
+ *
+ * offset=    : Write the image to the destination at a designated byte offset
+ *              from the beginning of the device node. Suffixes "G", "M",
+ *              and "K" are recognized.
+ *
+ * type=      : Supported values are:
+ *              'raw' Raw image (default)
+ *              'gzip' Raw image compressed with gzip
  */
-static void cmd_flash(const char *part_name, void *data, unsigned sz)
+static void cmd_flash(char *targetspec, void *data, unsigned sz)
 {
 	char *device;
 	struct part_info *ptn = NULL;
 	int free_device = 0;
 	int do_ext_checks = 0;
+	struct flash_target tgt;
 	flash_func cb;
+	int ret;
 
-	pr_verbose("cmd_flash %s %u\n", part_name, sz);
+	int action;
+	char *imgtype;
+	off_t offset = 0;
+	char *offsetstr;
 
-	if (!strcmp(part_name, "disk")) {
+	process_target(targetspec, &tgt);
+	pr_verbose("data size %u\n", sz);
+
+	if (!strcmp(tgt.name, "disk")) {
 		device = disk_info->device;
-	} else if ( (cb = hashmapGet(flash_cmds, (char *)part_name)) ) {
+	} else if ( (cb = hashmapGet(flash_cmds, tgt.name)) ) {
 		/* Use our table of flash functions registered by platform
 		 * specific plugin libraries */
 		int cbret;
 		cbret = cb(data, sz);
 		if (cbret) {
-			pr_error("%s flash failed!\n", part_name);
-			fastboot_fail(part_name);
+			pr_error("%s flash failed!\n", tgt.name);
+			fastboot_fail(tgt.name);
 		} else
 			fastboot_okay("");
-		return;
+		goto out;
 	} else {
 		free_device = 1;
-		device = find_part_device(disk_info, part_name);
+		device = find_part_device(disk_info, tgt.name);
 		if (!device) {
 			fastboot_fail("unknown partition specified");
-			return;
+			goto out;
 		}
-		ptn = find_part(disk_info, part_name);
+		ptn = find_part(disk_info, tgt.name);
 	}
 
-	pr_debug("Writing %u bytes to destination device: %s\n", sz, device);
+	action = !hashmapContainsKey(tgt.params, "noaction");
+	imgtype = hashmapGet(tgt.params, "type");
+	if (!imgtype)
+		imgtype = "raw";
+
+	if ( (offsetstr = hashmapGet(tgt.params, "offset")) ) {
+		off_t multiplier = 1;
+
+		switch (offsetstr[strlen(offsetstr) - 1]) {
+		case 'G':
+			multiplier *= 1024;
+			/* fall through */
+		case 'M':
+			multiplier *= 1024;
+			/* fall through */
+		case 'K':
+			multiplier *= 1024;
+			offsetstr[strlen(offsetstr) - 1] = '\0';
+		}
+
+		offset = atol(offsetstr) * multiplier;
+	}
+
 	if (!is_valid_blkdev(device)) {
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out;
 	}
+	pr_debug("Writing %u bytes to %s at offset: %jd\n",
+				sz, device, (intmax_t)offset);
+	if (!strcmp(imgtype, "raw")) {
+		pr_debug("File type is raw image\n");
+		ret = named_file_write(device, data, sz, offset, 0);
+	} else if (!strcmp(imgtype, "gzip")) {
+		pr_debug("File type is gzipped raw image\n");
+		ret = named_file_write_decompress_gzip(device, data, sz, offset, 0);
+	} else {
+		pr_debug("Unknown data type '%s'\n", imgtype);
+		ret = -1;
+	}
 
-	/* TODO add gzip support */
-	if (named_file_write(device, data, sz)) {
+	if (ret) {
 		fastboot_fail("Can't write data to target device");
 		goto out;
 	}
@@ -214,33 +324,35 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 
 	pr_debug("wrote %u bytes to %s\n", sz, device);
 
-	/* Check if we wrote to the base device node. If so,
-	 * re-sync the partition table in case we wrote out
-	 * a new one */
-	if (!strcmp(device, disk_info->device)) {
-		int fd = open(device, O_RDWR);
-		if (fd < 0) {
-			fastboot_fail("could not open device node");
-			goto out;
+	if (action) {
+		/* Check if we wrote to the base device node. If so,
+		 * re-sync the partition table in case we wrote out
+		 * a new one */
+		if (!strcmp(device, disk_info->device)) {
+			int fd = open(device, O_RDWR);
+			if (fd < 0) {
+				fastboot_fail("could not open device node");
+				goto out;
+			}
+			pr_verbose("sync partition table\n");
+			ioctl(fd, BLKRRPART, NULL);
+			close(fd);
 		}
-		pr_verbose("sync partition table\n");
-		ioctl(fd, BLKRRPART, NULL);
-		close(fd);
-	}
 
-	/* Make sure this is really an ext4 partition before we try to
-	 * run some disk checks and resize it, ptn->type isn't sufficient
-	 * information */
-	if (ptn && ptn->type == PC_PART_TYPE_LINUX) {
-		if (check_ext_superblock(ptn, &do_ext_checks)) {
-			fastboot_fail("couldn't check superblock");
-			goto out;
+		/* Make sure this is really an ext4 partition before we try to
+		 * run some disk checks and resize it, ptn->type isn't
+		 * sufficient information */
+		if (ptn && ptn->type == PC_PART_TYPE_LINUX) {
+			if (check_ext_superblock(ptn, &do_ext_checks)) {
+				fastboot_fail("couldn't check superblock");
+				goto out;
+			}
 		}
-	}
-	if (do_ext_checks) {
-		if (ext4_filesystem_checks(device, ptn)) {
-			fastboot_fail("ext4 filesystem error");
-			goto out;
+		if (do_ext_checks) {
+			if (ext4_filesystem_checks(device, ptn)) {
+				fastboot_fail("ext4 filesystem error");
+				goto out;
+			}
 		}
 	}
 
@@ -248,9 +360,10 @@ static void cmd_flash(const char *part_name, void *data, unsigned sz)
 out:
 	if (device && free_device)
 		free(device);
+	hashmapFree(tgt.params);
 }
 
-static void cmd_oem(const char *arg, void *data, unsigned sz)
+static void cmd_oem(char *arg, void *data, unsigned sz)
 {
 	char *command, *saveptr, *str1;
 	char *argv[MAX_OEM_ARGS];
@@ -314,12 +427,12 @@ out:
 	return;
 }
 
-static void cmd_boot(const char *arg, void *data, unsigned sz)
+static void cmd_boot(char *arg, void *data, unsigned sz)
 {
 	fastboot_fail("boot command stubbed on this platform!");
 }
 
-static void cmd_reboot(const char *arg, void *data, unsigned sz)
+static void cmd_reboot(char *arg, void *data, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
@@ -328,7 +441,7 @@ static void cmd_reboot(const char *arg, void *data, unsigned sz)
 	pr_error("Reboot failed");
 }
 
-static void cmd_reboot_bl(const char *arg, void *data, unsigned sz)
+static void cmd_reboot_bl(char *arg, void *data, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
@@ -337,7 +450,7 @@ static void cmd_reboot_bl(const char *arg, void *data, unsigned sz)
 	pr_error("Reboot failed");
 }
 
-static void cmd_continue(const char *arg, void *data, unsigned sz)
+static void cmd_continue(char *arg, void *data, unsigned sz)
 {
 	if (g_update_location) {
 		apply_sw_update(g_update_location, 1);

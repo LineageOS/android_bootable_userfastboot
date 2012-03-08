@@ -45,7 +45,7 @@ struct fastboot_cmd {
 	struct fastboot_cmd *next;
 	const char *prefix;
 	unsigned prefix_len;
-	void (*handle) (const char *arg, void *data, unsigned sz);
+	void (*handle) (char *arg, void *data, unsigned sz);
 };
 
 struct fastboot_var {
@@ -57,7 +57,7 @@ struct fastboot_var {
 static struct fastboot_cmd *cmdlist;
 
 void fastboot_register(const char *prefix,
-		       void (*handle) (const char *arg, void *data,
+		       void (*handle) (char *arg, void *data,
 				       unsigned sz))
 {
 	struct fastboot_cmd *cmd;
@@ -194,7 +194,7 @@ void fastboot_okay(const char *info)
 	fastboot_ack("OKAY", info);
 }
 
-static void cmd_getvar(const char *arg, void *data, unsigned sz)
+static void cmd_getvar(char *arg, void *data, unsigned sz)
 {
 	struct fastboot_var *var;
 
@@ -208,7 +208,7 @@ static void cmd_getvar(const char *arg, void *data, unsigned sz)
 	fastboot_okay("");
 }
 
-static void cmd_download(const char *arg, void *data, unsigned sz)
+static void cmd_download(char *arg, void *data, unsigned sz)
 {
 	char response[64];
 	unsigned len;
@@ -259,7 +259,7 @@ again:
 			fastboot_state = STATE_COMMAND;
 			ui_show_indeterminate_progress();
 			pthread_mutex_lock(&action_mutex);
-			cmd->handle((const char *)buffer + cmd->prefix_len,
+			cmd->handle((char *)buffer + cmd->prefix_len,
 				    (void *)download_base, download_size);
 			pthread_mutex_unlock(&action_mutex);
 			ui_reset_progress();

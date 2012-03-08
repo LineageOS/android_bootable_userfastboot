@@ -4,7 +4,7 @@
 #include <diskconfig/diskconfig.h>
 
 int named_file_write(const char *filename, const unsigned char *what,
-		size_t sz);
+		size_t sz, off_t offset, int append);
 int kexec_linux(char *basepath);
 int is_valid_blkdev(const char *node);
 /* Attribute specification and -Werror prevents most security shenanigans with
@@ -22,5 +22,5 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 int ext4_filesystem_checks(const char *device, struct part_info *ptn);
 void import_kernel_cmdline(void (*callback)(char *name));
 int named_file_write_decompress_gzip(const char *filename,
-		unsigned char *what, size_t sz);
+		unsigned char *what, size_t sz, off_t offset, int append);
 #endif

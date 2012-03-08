@@ -103,7 +103,7 @@ out:
 #define CHUNK 1024 * 256
 
 int named_file_write_decompress_gzip(const char *filename,
-	unsigned char *what, size_t sz)
+	unsigned char *what, size_t sz, off_t offset, int append)
 {
 	int ret;
 	unsigned int have;
@@ -111,7 +111,7 @@ int named_file_write_decompress_gzip(const char *filename,
 	FILE *dest;
 	unsigned char out[CHUNK];
 
-	dest = fopen(filename, "w");
+	dest = fopen(filename, append ? "a" : "w");
 	if (!dest) {
 		pr_perror("fopen");
 		return -1;
@@ -128,6 +128,12 @@ int named_file_write_decompress_gzip(const char *filename,
 		pr_error("zlib inflateInit error");
 		fclose(dest);
 		return ret;
+	}
+
+	if (offset && fseeko(dest, offset, SEEK_SET)) {
+		pr_perror("fseek");
+		ret = -1;
+		goto out;
 	}
 
 	do {
@@ -180,15 +186,23 @@ out:
 
 
 int named_file_write(const char *filename, const unsigned char *what,
-		size_t sz)
+		size_t sz, off_t offset, int append)
 {
-	int fd;
-	int ret;
-	fd = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	int fd, ret, flags;
+
+	flags = O_RDWR | (append ? O_APPEND : O_CREAT);
+	fd = open(filename, flags);
 	if (fd < 0) {
 		pr_error("file_write: Can't open file %s: %s\n",
 				filename, strerror(errno));
 		return -1;
+	}
+	if (offset) {
+		if (lseek(fd, offset, SEEK_SET) < 0) {
+			pr_perror("lseek");
+			close(fd);
+			return -1;
+		}
 	}
 
 	while (sz) {
@@ -520,7 +534,7 @@ void apply_sw_update(const char *location, int send_fb_ok)
 	}
 
 	if (named_file_write("/mnt/cache/recovery/command", (void *)cmdline,
-				strlen(cmdline))) {
+				strlen(cmdline), 0, 0)) {
 		pr_error("Couldn't create recovery console command file\n");
 		unlink("/mnt/userdata/droidboot.update.zip");
 		goto out;

@@ -172,9 +172,11 @@ static void cmd_erase(char *part_name, void *data, unsigned sz)
 }
 
 
-static int cmd_flash_update(void *data, unsigned sz)
+static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
 {
 	struct part_info *cacheptn;
+	int action = !hashmapContainsKey(params, "noaction");
+	int append = hashmapContainsKey(params, "append");
 
 	cacheptn = find_part(disk_info, CACHE_PTN);
 	if (!cacheptn) {
@@ -186,20 +188,22 @@ static int cmd_flash_update(void *data, unsigned sz)
 		pr_error("Couldn't mount " CACHE_PTN "partition\n");
 		return -1;
 	}
-	/* Remove any old copy hanging around */
-	unlink("/mnt/" CACHE_PTN "/droidboot.update.zip");
 
 	/* Once the update is applied this file is deleted */
 	if (named_file_write("/mnt/" CACHE_PTN "/droidboot.update.zip",
-				data, sz, 0, 0)) {
+				data, sz, 0, append)) {
 		pr_error("Couldn't write update package to " CACHE_PTN
 				" partition.\n");
 		unmount_partition(cacheptn);
 		return -1;
 	}
 	unmount_partition(cacheptn);
-	apply_sw_update(CACHE_VOLUME "/droidboot.update.zip", 1);
-	return -1;
+
+	if (action) {
+		apply_sw_update(CACHE_VOLUME "/droidboot.update.zip", 1);
+		return -1;
+	}
+	return 0;
 }
 
 /* Image command. Allows user to send a single file which
@@ -259,7 +263,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		/* Use our table of flash functions registered by platform
 		 * specific plugin libraries */
 		int cbret;
-		cbret = cb(data, sz);
+		cbret = cb(tgt.params, data, sz);
 		if (cbret) {
 			pr_error("%s flash failed!\n", tgt.name);
 			fastboot_fail(tgt.name);

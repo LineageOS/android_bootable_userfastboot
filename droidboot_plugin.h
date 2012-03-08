@@ -18,8 +18,9 @@
 #define DROIDBOOT_PLUGIN_H
 
 #include <droidboot_ui.h>
+#include <cutils/hashmap.h>
 
-typedef int (*flash_func)(void *data, unsigned sz);
+typedef int (*flash_func)(Hashmap *params, void *data, unsigned sz);
 
 #define MAX_OEM_ARGS 64
 

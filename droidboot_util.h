@@ -21,4 +21,6 @@ int unmount_partition(struct part_info *ptn);
 int mount_partition_device(const char *device, const char *type, char *mountpoint);
 int ext4_filesystem_checks(const char *device, struct part_info *ptn);
 void import_kernel_cmdline(void (*callback)(char *name));
+int named_file_write_decompress_gzip(const char *filename,
+		unsigned char *what, size_t sz);
 #endif

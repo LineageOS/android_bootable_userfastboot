@@ -18,7 +18,7 @@ LOCAL_MODULE_TAGS := eng
 LOCAL_SHARED_LIBRARIES := libdiskconfig liblog libext4_utils libz
 LOCAL_STATIC_LIBRARIES += libcharger libminui libpng libpixelflinger_static
 LOCAL_STATIC_LIBRARIES += $(TARGET_DROIDBOOT_LIBS) $(TARGET_DROIDBOOT_EXTRA_LIBS)
-LOCAL_C_INCLUDES += bootable/recovery
+LOCAL_C_INCLUDES += bootable/recovery external/zlib
 
 # Each library in TARGET_DROIDBOOT_LIBS should have a function
 # named "<libname>_init()".  Here we emit a little C function that

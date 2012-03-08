@@ -460,6 +460,9 @@ int main(int argc, char **argv)
 	char *config_location;
 	pthread_t t_auto, t_input;
 
+	/* Files written only read/writable by root */
+	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+
 	/* initialize libminui */
 	ui_init();
 

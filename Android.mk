@@ -47,9 +47,9 @@ $(inc) : libs := $(TARGET_DROIDBOOT_LIBS)
 $(inc) : $(inc).list $(LOCAL_PATH)/Android.mk
 	$(hide) mkdir -p $(dir $@)
 	$(hide) echo "" > $@
-	$(hide) $(foreach lib,$(libs),echo "extern void $(lib)_init(void);" >> $@)
+	$(hide) $(foreach lib,$(libs), echo -e "extern void $(lib)_init(void);\n" >> $@;)
 	$(hide) echo "void register_droidboot_plugins() {" >> $@
-	$(hide) $(foreach lib,$(libs),echo "  $(lib)_init();" >> $@)
+	$(hide) $(foreach lib,$(libs),echo "  $(lib)_init();" >> $@;)
 	$(hide) echo "}" >> $@
 
 $(call intermediates-dir-for,EXECUTABLES,droidboot)/aboot.o : $(inc)

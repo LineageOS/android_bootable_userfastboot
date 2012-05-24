@@ -68,6 +68,11 @@ recovery_fstab := $(TARGET_DEVICE_DIR)/recovery.fstab
 
 $(droidboot_system_files): $(INSTALLED_SYSTEMIMAGE)
 
+droidboot_installed_system_files = $(patsubst $(TARGET_OUT)/%,$(droidboot_system_out)/%,$(droidboot_system_files))
+
+$(droidboot_installed_system_files): $(droidboot_system_files)
+	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
+
 # NOTE: You'll need to pass g_android.fastboot=1 on the kernel command line
 # so that the ADB driver exports the right protocol
 $(DROIDBOOT_RAMDISK): \
@@ -81,7 +86,7 @@ $(DROIDBOOT_RAMDISK): \
 		$(droidboot_initrc) \
 		$(DROIDBOOT_HARDWARE_INITRC) \
 		$(droidboot_resources_deps) \
-		$(droidboot_system_files) \
+		$(droidboot_installed_system_files) \
 
 	$(hide) rm -rf $(droidboot_root_out)
 	$(hide) mkdir -p $(droidboot_root_out)

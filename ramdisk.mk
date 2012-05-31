@@ -66,7 +66,12 @@ DROIDBOOT_BOOTIMAGE := $(PRODUCT_OUT)/droidboot.img
 # Used by Droidboot to know what device the SD card is on for OTA
 recovery_fstab := $(TARGET_DEVICE_DIR)/recovery.fstab
 
-$(droidboot_system_files): $(INSTALLED_SYSTEMIMAGE)
+# need to make sure kernel is built so we can copy kernel modules (if needed)
+ifneq ($(strip $(TARGET_NO_KERNEL)),true)
+droidboot_system_extra_dep := kernel
+endif
+
+$(droidboot_system_files): $(INSTALLED_SYSTEMIMAGE) $(droidboot_system_extra_dep)
 
 droidboot_installed_system_files = $(patsubst $(TARGET_OUT)/%,$(droidboot_system_out)/%,$(droidboot_system_files))
 

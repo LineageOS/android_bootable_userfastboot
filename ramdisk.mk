@@ -32,6 +32,7 @@ droidboot_modules := \
 	gzip \
 	kexec \
 	droidboot \
+	modprobe \
 	netcfg \
 
 droidboot_system_files = $(call module-installed-files,$(droidboot_modules)) \

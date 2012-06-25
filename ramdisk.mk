@@ -71,11 +71,11 @@ ifneq ($(strip $(TARGET_NO_KERNEL)),true)
 droidboot_system_extra_dep := kernel
 endif
 
-$(droidboot_system_files): $(INSTALLED_SYSTEMIMAGE) $(droidboot_system_extra_dep)
+$(droidboot_system_files): $(INSTALLED_SYSTEMIMAGE)
 
 droidboot_installed_system_files = $(patsubst $(TARGET_OUT)/%,$(droidboot_system_out)/%,$(droidboot_system_files))
 
-$(droidboot_installed_system_files): $(droidboot_system_files)
+$(droidboot_installed_system_files): $(droidboot_system_files) $(droidboot_system_extra_dep)
 	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
 
 # NOTE: You'll need to pass g_android.fastboot=1 on the kernel command line

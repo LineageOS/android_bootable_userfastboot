@@ -243,7 +243,9 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 
 int ext4_filesystem_checks(const char *device, struct part_info *ptn)
 {
+#ifndef SKIP_FSCK
 	int ret;
+#endif
 	Volume *vol;
 	long long length;
 
@@ -253,6 +255,7 @@ int ext4_filesystem_checks(const char *device, struct part_info *ptn)
 		return -1;
 	}
 
+#ifndef SKIP_FSCK
 	/* run fdisk to make sure the partition is OK */
 	ret = execute_command("/system/bin/e2fsck -C 0 -fn %s",
 				device);
@@ -260,6 +263,7 @@ int ext4_filesystem_checks(const char *device, struct part_info *ptn)
 		pr_error("fsck of filesystem failed\n");
 		return -1;
 	}
+#endif
 
 	/* Resize the filesystem according to vol->length:
 	 * length == 0 -> use all the available size

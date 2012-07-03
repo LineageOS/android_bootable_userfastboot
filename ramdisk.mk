@@ -34,10 +34,9 @@ droidboot_modules := \
 	droidboot \
 	modprobe \
 	netcfg \
+	init.net.eth0.sh \
 
-droidboot_system_files = $(call module-installed-files,$(droidboot_modules)) \
-						 $(foreach srcfile,$(DROIDBOOT_COPY_SYSTEM_FILES),\
-						 $(PRODUCT_OUT)/system/$(srcfile))
+droidboot_system_files = $(call module-installed-files,$(droidboot_modules))
 
 ifneq ($(DROIDBOOT_NO_GUI),true)
 droidboot_resources_common := $(LOCAL_PATH)/res
@@ -67,18 +66,6 @@ DROIDBOOT_BOOTIMAGE := $(PRODUCT_OUT)/droidboot.img
 # Used by Droidboot to know what device the SD card is on for OTA
 recovery_fstab := $(TARGET_DEVICE_DIR)/recovery.fstab
 
-# need to make sure kernel is built so we can copy kernel modules (if needed)
-ifneq ($(strip $(TARGET_NO_KERNEL)),true)
-droidboot_system_extra_dep := kernel
-endif
-
-$(droidboot_system_files): $(INSTALLED_SYSTEMIMAGE)
-
-droidboot_installed_system_files = $(patsubst $(TARGET_OUT)/%,$(droidboot_system_out)/%,$(droidboot_system_files))
-
-$(droidboot_installed_system_files): $(droidboot_system_files) $(droidboot_system_extra_dep)
-	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
-
 # NOTE: You'll need to pass g_android.fastboot=1 on the kernel command line
 # so that the ADB driver exports the right protocol
 $(DROIDBOOT_RAMDISK): \
@@ -92,7 +79,7 @@ $(DROIDBOOT_RAMDISK): \
 		$(droidboot_initrc) \
 		$(DROIDBOOT_HARDWARE_INITRC) \
 		$(droidboot_resources_deps) \
-		$(droidboot_installed_system_files) \
+		$(droidboot_system_files) \
 
 	$(hide) rm -rf $(droidboot_root_out)
 	$(hide) mkdir -p $(droidboot_root_out)

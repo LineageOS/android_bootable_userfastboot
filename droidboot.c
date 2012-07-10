@@ -112,6 +112,8 @@ static int g_update_pause = 0;
 
 char *g_update_location = NULL;
 
+struct selabel_handle *sehandle;
+
 #define AUTO_UPDATE_FNAME	DEVICE_NAME ".auto-ota.zip"
 
 int (*platform_provision_function)(void);
@@ -469,6 +471,7 @@ int main(int argc, char **argv)
 	pr_info(" -- Droidboot %s for %s --\n", DROIDBOOT_VERSION, DEVICE_NAME);
 	import_kernel_cmdline(parse_cmdline_option);
 
+
 #ifdef USE_GUI
 	/* Enforce a minimum battery level */
 	if (g_min_battery != 0) {
@@ -496,6 +499,19 @@ int main(int argc, char **argv)
 
 	ev_init(input_callback, NULL);
 	ui_set_background(BACKGROUND_ICON_INSTALLING);
+
+#ifdef HAVE_SELINUX
+	struct selinux_opt seopts[] = {
+		{ SELABEL_OPT_PATH, "/file_contexts" }
+	};
+
+	sehandle = selabel_open(SELABEL_CTX_FILE, seopts, 1);
+
+	if (!sehandle) {
+		fprintf(stderr, "Warning: No file_contexts\n");
+		ui->Print("Warning:  No file_contexts\n");
+	}
+#endif
 
 	if (argc > 1)
 		config_location = argv[1];

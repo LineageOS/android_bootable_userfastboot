@@ -56,7 +56,8 @@
 
 /* make_ext4fs.h can't be included along with linux/ext3_fs.h.
  * This is the only item needed out of the former. */
-extern int make_ext4fs_quick(const char *filename, int64_t len);
+extern int make_ext4fs(const char *filename, int64_t len,
+                const char *mountpoint, struct selabel_handle *sehnd);
 
 void die(void)
 {
@@ -365,7 +366,7 @@ int erase_partition(struct part_info *ptn)
 	}
 
 	if (!strcmp(vol->fs_type, "ext4")) {
-		if (make_ext4fs_quick(vol->device, vol->length)) {
+		if (make_ext4fs(vol->device, vol->length, ptn->name, sehandle)) {
 		        pr_error("make_ext4fs failed\n");
 			goto out;
 		}

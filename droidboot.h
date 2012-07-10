@@ -6,6 +6,15 @@
 #include <stdint.h>
 #include <pthread.h>
 
+#ifdef HAVE_SELINUX
+#include <selinux/selinux.h>
+#include <selinux/label.h>
+#else
+struct selabel_handle;
+#endif
+
+extern struct selabel_handle *sehandle;
+
 #include <droidboot_fstab.h>
 
 #define MEGABYTE	(1024 * 1024)

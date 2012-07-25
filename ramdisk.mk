@@ -32,7 +32,6 @@ droidboot_modules := \
 	gzip \
 	kexec \
 	droidboot \
-	modprobe \
 	netcfg \
 	init.net.eth0.sh \
 

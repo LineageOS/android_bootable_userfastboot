@@ -30,7 +30,6 @@ droidboot_modules := \
 	tune2fs \
 	e2fsck \
 	gzip \
-	kexec \
 	droidboot \
 	netcfg \
 	init.net.eth0.sh \

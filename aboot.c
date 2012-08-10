@@ -460,11 +460,9 @@ static void cmd_continue(char *arg, void *data, unsigned sz)
 		apply_sw_update(g_update_location, 1);
 		fastboot_fail("Unable to apply SW update");
 	} else {
-		start_default_kernel();
-		fastboot_fail("Unable to boot default kernel!");
+		cmd_reboot(arg, data, sz);
 	}
 }
-
 
 void aboot_register_commands(void)
 {

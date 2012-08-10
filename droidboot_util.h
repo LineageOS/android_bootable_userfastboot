@@ -5,7 +5,6 @@
 
 int named_file_write(const char *filename, const unsigned char *what,
 		size_t sz, off_t offset, int append);
-int kexec_linux(char *basepath);
 int is_valid_blkdev(const char *node);
 /* Attribute specification and -Werror prevents most security shenanigans with
  * this function */

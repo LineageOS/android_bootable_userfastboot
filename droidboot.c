@@ -84,22 +84,6 @@ struct disk_info *disk_info;
  * executes a command. Threads which touch the disk should do likewise. */
 pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* Not bothering with concurrency control as this is just a flag
- * that gets cleared */
-static int autoboot_enabled;
-
-/* Whether to kexec into a 2nd-stage kernel on boot */
-static int g_use_autoboot = 0;
-
-/* Filesystem containing 2nd-stage boot images */
-static char *g_2ndstageboot_part = DATA_PTN;
-
-/* Directory within filesystem containing 2nd-stage boot images */
-static char *g_2ndstageboot_dir = "2ndstageboot";
-
-/* When performing a countdown, how many seconds to wait */
-static int g_autoboot_delay_secs = 8;
-
 /* Default size of memory buffer for image data */
 static int g_scratch_size = 400;
 
@@ -245,31 +229,8 @@ out:
 	return ret;
 }
 
-void disable_autoboot(void)
-{
-	if (autoboot_enabled) {
-		autoboot_enabled = 0;
-		pr_info("Countdown disabled.\n");
-	}
-}
 
-static int countdown(char *action, int seconds)
-{
-	int ret;
-	autoboot_enabled = 1;
-	ui_show_progress(1.0, seconds);
-	pr_info("Press a button to cancel this countdown");
-	for ( ; seconds && autoboot_enabled; seconds--) {
-		pr_info("Automatic %s in %d seconds\n", action, seconds);
-		sleep(1);
-	}
-	ui_reset_progress();
-	ret = autoboot_enabled;
-	autoboot_enabled = 0;
-	return ret;
-}
-
-int try_update_sw(Volume *vol, int use_countdown)
+int try_update_sw(Volume *vol)
 {
 	int ret = 0;
 	char *update_location;
@@ -281,18 +242,6 @@ int try_update_sw(Volume *vol, int use_countdown)
 	update_location = detect_sw_update(vol);
 	if (!update_location)
 		return 0;
-
-	if (use_countdown) {
-		int countdown_complete;
-		ui_show_text(1);
-		countdown_complete = countdown("SW update",
-				g_autoboot_delay_secs);
-		ui_show_text(0);
-		if (!countdown_complete) {
-			free(update_location);
-			return 0;
-		}
-	}
 
 	ret = -1;
 
@@ -314,82 +263,6 @@ int try_update_sw(Volume *vol, int use_countdown)
 	ui_reset_progress();
 	pthread_mutex_unlock(&action_mutex);
 	return ret;
-}
-
-
-static void *autoboot_thread(void *arg)
-{
-	/* FIXME: check if there's anything to actually boot
-	 * before starting the countdown */
-	if (!countdown("boot", g_autoboot_delay_secs))
-		return NULL;
-
-	ui_reset_progress();
-	ui_show_text(1);
-	start_default_kernel();
-	return NULL;
-}
-
-static int input_callback(int fd, short revents, void *data)
-{
-	struct input_event ev;
-	int ret;
-
-	ret = ev_get_input(fd, revents, &ev);
-	if (ret)
-		return -1;
-
-	pr_verbose("Event type: %x, code: %x, value: %x\n",
-				ev.type, ev.code,
-				ev.value);
-
-	switch (ev.type) {
-		case EV_KEY:
-			disable_autoboot();
-			break;
-		default:
-			break;
-	}
-	return 0;
-}
-
-
-static void *input_listener_thread(void *arg)
-{
-	pr_verbose("begin input listener thread\n");
-
-	while (1) {
-		if (!ev_wait(-1))
-			ev_dispatch();
-	}
-	pr_verbose("exit input listener thread\n");
-
-	return NULL;
-}
-
-
-void start_default_kernel(void)
-{
-	char basepath[PATH_MAX];
-	struct part_info *ptn;
-	ptn = find_part(disk_info, g_2ndstageboot_part);
-	if(ptn == NULL) {
-		pr_error("Couldn't find the second-stage boot partition (%s)\n",
-				g_2ndstageboot_part);
-		return;
-	}
-
-	if (mount_partition(ptn)) {
-		pr_error("Can't mount second-stage boot partition (%s)\n",
-				g_2ndstageboot_part);
-		return;
-	}
-
-	snprintf(basepath, sizeof(basepath), "/mnt/%s/%s/",
-			g_2ndstageboot_part, g_2ndstageboot_dir);
-	kexec_linux(basepath);
-	/* Failed if we get here */
-	pr_error("kexec failed");
 }
 
 
@@ -433,22 +306,10 @@ static void parse_cmdline_option(char *name)
 	else
 		return;
 
-	if (!strcmp(name, "droidboot.bootloader")) {
-		g_use_autoboot = atoi(value);
-	} else if (!strcmp(name, "droidboot.delay")) {
-		g_autoboot_delay_secs = atoi(value);
-	} else if (!strcmp(name, "droidboot.scratch")) {
+	if (!strcmp(name, "droidboot.scratch")) {
 		g_scratch_size = atoi(value);
 	} else if (!strcmp(name, "droidboot.minbatt")) {
 		g_min_battery = atoi(value);
-	} else if (!strcmp(name, "droidboot.bootpart")) {
-		g_2ndstageboot_part = strdup(value);
-		if (!g_2ndstageboot_part)
-			die();
-	} else if (!strcmp(name, "droidboot.bootdir")) {
-		g_2ndstageboot_part = strdup(value);
-		if (!g_2ndstageboot_part)
-			die();
 	} else if (!strcmp(name, "droidboot.updatepause")) {
 		g_update_pause = atoi(value);
 	} else {
@@ -460,7 +321,6 @@ static void parse_cmdline_option(char *name)
 int main(int argc, char **argv)
 {
 	char *config_location;
-	pthread_t t_auto, t_input;
 
 	/* Files written only read/writable by root */
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
@@ -497,7 +357,6 @@ int main(int argc, char **argv)
 	}
 #endif
 
-	ev_init(input_callback, NULL);
 	ui_set_background(BACKGROUND_ICON_INSTALLING);
 
 #ifdef HAVE_SELINUX
@@ -523,19 +382,6 @@ int main(int argc, char **argv)
 	aboot_register_commands();
 
 	register_droidboot_plugins();
-
-	if (pthread_create(&t_input, NULL, input_listener_thread,
-					NULL)) {
-		pr_perror("pthread_create");
-		die();
-	}
-
-	if (g_use_autoboot && !g_update_location) {
-		if (pthread_create(&t_auto, NULL, autoboot_thread, NULL)) {
-			pr_perror("pthread_create");
-			die();
-		}
-	}
 
 	fastboot_init(g_scratch_size * MEGABYTE);
 

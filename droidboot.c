@@ -87,8 +87,9 @@ pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
 /* Default size of memory buffer for image data */
 static int g_scratch_size = 400;
 
-/* Minimum battery % before we do anything */
-static int g_min_battery = 10;
+/* Minimum battery % before we do anything. By default there is no
+ * minimum */
+static int g_min_battery = 0;
 
 /* If nonzero, wait for "fastboot continue" before applying a
  * detected SW update in try_update_sw() */

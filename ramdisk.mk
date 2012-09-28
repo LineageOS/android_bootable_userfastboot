@@ -62,7 +62,11 @@ DROIDBOOT_RAMDISK := $(droidboot_out)/ramdisk-droidboot.img.gz
 DROIDBOOT_BOOTIMAGE := $(PRODUCT_OUT)/droidboot.img
 
 # Used by Droidboot to know what device the SD card is on for OTA
+ifdef TARGET_RECOVERY_FSTAB
+recovery_fstab := $(TARGET_RECOVERY_FSTAB)
+else
 recovery_fstab := $(TARGET_DEVICE_DIR)/recovery.fstab
+endif
 
 # NOTE: You'll need to pass g_android.fastboot=1 on the kernel command line
 # so that the ADB driver exports the right protocol

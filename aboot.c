@@ -49,6 +49,9 @@
 #include <cutils/hashmap.h>
 #include <diskconfig/diskconfig.h>
 
+/* from ext4_utils for sparse ext4 images */
+#include <sparse_format.h>
+
 #include "fastboot.h"
 #include "droidboot.h"
 #include "droidboot_util.h"
@@ -311,7 +314,16 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 				sz, device, (intmax_t)offset);
 	if (!strcmp(imgtype, "raw")) {
 		pr_debug("File type is raw image\n");
-		ret = named_file_write(device, data, sz, offset, 0);
+
+		if ((sz >= sizeof(sparse_header_t)) &&
+			(((sparse_header_t*)data)->magic == SPARSE_HEADER_MAGIC)) {
+			/* If there is enough data to hold the header,
+			 * and MAGIC appears in header,
+			 * then it is a sparse ext4 image */
+			ret = named_file_write_ext4_sparse(device, data, sz);
+		} else {
+			ret = named_file_write(device, data, sz, offset, 0);
+		}
 	} else if (!strcmp(imgtype, "gzip")) {
 		pr_debug("File type is gzipped raw image\n");
 		ret = named_file_write_decompress_gzip(device, data, sz, offset, 0);

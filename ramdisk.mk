@@ -33,6 +33,7 @@ droidboot_modules := \
 	droidboot \
 	netcfg \
 	init.net.eth0.sh \
+	simg2img \
 
 droidboot_system_files = $(call module-installed-files,$(droidboot_modules))
 

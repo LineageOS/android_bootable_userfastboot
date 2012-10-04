@@ -186,6 +186,23 @@ out:
 }
 
 
+int named_file_write_ext4_sparse(const char *filename,
+	unsigned char *what, size_t sz)
+{
+	int ret;
+
+	ret = execute_command_data(what, sz,
+				"/system/bin/simg2img - %s",
+				filename);
+	if (ret) {
+		pr_error("writing sparse ext4 image failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+
 int named_file_write(const char *filename, const unsigned char *what,
 		size_t sz, off_t offset, int append)
 {

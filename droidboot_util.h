@@ -22,4 +22,6 @@ int ext4_filesystem_checks(const char *device, struct part_info *ptn);
 void import_kernel_cmdline(void (*callback)(char *name));
 int named_file_write_decompress_gzip(const char *filename,
 		unsigned char *what, size_t sz, off_t offset, int append);
+int named_file_write_ext4_sparse(const char *filename,
+		unsigned char *what, size_t sz);
 #endif

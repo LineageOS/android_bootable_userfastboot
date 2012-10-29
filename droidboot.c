@@ -48,7 +48,6 @@
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
 #include <charger/charger.h>
-#include <diskconfig/diskconfig.h>
 
 #include "aboot.h"
 #include "droidboot_util.h"
@@ -62,24 +61,6 @@
  * registration functions for device-specific extensions. */
 #include "register.inc"
 
-/* NOTE: Droidboot uses two sources of information about the disk. There
- * is disk_layout.conf which specifies the physical partition layout on
- * the disk via libdiskconfig. There is also recovery.fstab which gives
- * detail on the filesystems associates with these partitions, see fstab.c.
- * The device node is used to link these two sources when necessary; the
- * 'name' fields are typically not the same.
- *
- * It would be best to have this in a single data store, but we wanted to
- * leverage existing android mechanisms whenever possible, there are already
- * too many different places in the build where filesystem data is recorded.
- * So there is a little bit of ugly gymnastics involved when both sources
- * need to be used.
- */
-
-/* libdiskconfig data structure representing the intended layout of the
- * internal disk, as read from /etc/disk_layout.conf */
-struct disk_info *disk_info;
-
 /* Synchronize operations which touch EMMC. Fastboot holds this any time it
  * executes a command. Threads which touch the disk should do likewise. */
 pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -91,205 +72,10 @@ static int g_scratch_size = 400;
  * minimum */
 static int g_min_battery = 0;
 
-/* If nonzero, wait for "fastboot continue" before applying a
- * detected SW update in try_update_sw() */
-static int g_update_pause = 0;
-
-char *g_update_location = NULL;
+/* Path to search for recovery.fstab */
+static char *g_fstab_path = RECOVERY_FSTAB_LOCATION;
 
 struct selabel_handle *sehandle;
-
-#define AUTO_UPDATE_FNAME	DEVICE_NAME ".auto-ota.zip"
-
-int (*platform_provision_function)(void);
-
-void set_platform_provision_function(int (*fn)(void))
-{
-	platform_provision_function = fn;
-}
-
-/* Set up a specific partition in preparation for auto-update The source_device
- * is the partition that the update is stored on; if it's the same
- * as the partition that we're performing this routine on, verify its
- * integrity and resize it instead of formatting.
- *
- * Note that erase_partition does a 'quick' format; the disk is not zeroed
- * out. */
-static int provision_partition(const char *name, Volume *source_volume)
-{
-	struct part_info *ptn;
-	char *device = NULL;
-	int ret = -1;
-
-	/* Set up cache partition */
-	ptn = find_part(disk_info, name);
-	if (!ptn) {
-		pr_error("Couldn't find %s partition. Is your "
-				"disk_layout.conf valid?", name);
-		goto out;
-	}
-	device = find_part_device(disk_info, ptn->name);
-	if (!device) {
-		pr_error("Can't get %s partition device node!", name);
-		goto out;
-	}
-	/* Not checking device2; if people are declaring multiple devices
-	 * for cache and data, they're nuts */
-	if (!strcmp(source_volume->device, device)) {
-		if (ext4_filesystem_checks(device, ptn)) {
-			pr_error("%s filesystem corrupted", name);
-			goto out;
-		}
-	} else {
-		if (erase_partition(ptn)) {
-			pr_error("Couldn't format %s partition", name);
-			goto out;
-		}
-	}
-
-	ret = 0;
-out:
-	free(device);
-	return ret;
-}
-
-/* Ensure the device's disk is set up in a sane way, such that it's possible
- * to apply a full OTA update */
-static int provisioning_checks(Volume *source_device)
-{
-	pr_debug("Preparing device for provisioning...");
-
-	if (platform_provision_function && platform_provision_function()) {
-		pr_error("Platform-speciifc provision function failed");
-		return -1;
-	}
-
-	if (provision_partition(CACHE_PTN, source_device)) {
-		return -1;
-	}
-
-	if (provision_partition(DATA_PTN, source_device)) {
-		return -1;
-	}
-
-	return 0;
-}
-
-/* Check a particular volume to see if there is an automatic OTA
- * package present on it, and if so, return a path which can be
- * fed to the command line of the recovery console.
- *
- * Don't report errors if we can't mount the volume or the
- * auto-ota file doesn't exist. */
-static char *detect_sw_update(Volume *vol)
-{
-	char *filename = NULL;
-	struct stat statbuf;
-	char *ret = NULL;
-	char *mountpoint = NULL;
-
-	if (asprintf(&mountpoint, "/mnt%s", vol->mount_point) < 0) {
-		pr_perror("asprintf");
-		die();
-	}
-
-	if (asprintf(&filename, "%s/" AUTO_UPDATE_FNAME,
-				mountpoint) < 0) {
-		pr_perror("asprintf");
-		die();
-	}
-	pr_debug("Looking for %s...", filename);
-
-	if (mount_partition_device(vol->device, vol->fs_type,
-			mountpoint)) {
-		if (!vol->device2 || mount_partition_device(vol->device2,
-				vol->fs_type, mountpoint))
-		{
-			pr_debug("Couldn't mount %s", vol->mount_point);
-			goto out;
-		}
-	}
-
-	if (stat(filename, &statbuf)) {
-		if (errno == ENOENT)
-			pr_debug("Coudln't find %s", filename);
-		else
-			pr_perror("stat");
-	} else {
-		ret = strdup(filename + 4); /* Nip off leading '/mnt' */
-		if (!ret) {
-			pr_perror("strdup");
-			die();
-		}
-		pr_info("OTA Update package found: %s", filename);
-	}
-out:
-	free(filename);
-	umount(mountpoint);
-	free(mountpoint);
-	return ret;
-}
-
-
-int try_update_sw(Volume *vol)
-{
-	int ret = 0;
-	char *update_location;
-
-	/* Check if we've already been here */
-	if (g_update_location)
-		return 0;
-
-	update_location = detect_sw_update(vol);
-	if (!update_location)
-		return 0;
-
-	ret = -1;
-
-	pthread_mutex_lock(&action_mutex);
-	ui_show_indeterminate_progress();
-	if (provisioning_checks(vol)) {
-		free(update_location);
-	} else {
-		if (!g_update_pause) {
-			apply_sw_update(update_location, 0);
-			free(update_location);
-		} else {
-			/* Stash the location for later use with
-			 * 'fastboot continue' */
-			g_update_location = update_location;
-			ret = 0;
-		}
-	}
-	ui_reset_progress();
-	pthread_mutex_unlock(&action_mutex);
-	return ret;
-}
-
-
-void setup_disk_information(char *disk_layout_location)
-{
-	/* Read the recovery.fstab, which is used to for filesystem
-	 * meta-data and also the sd card device node */
-	load_volume_table();
-
-	/* Read disk_layout.conf, which provides physical partition
-	 * layout information */
-	pr_debug("Reading disk layout from %s\n", disk_layout_location);
-	disk_info = load_diskconfig(disk_layout_location, NULL);
-	if (!disk_info) {
-		pr_error("Disk layout unreadable");
-		die();
-	}
-	process_disk_config(disk_info);
-	dump_disk_config(disk_info);
-
-	/* Set up the partition table */
-	if (apply_disk_config(disk_info, 0)) {
-		pr_error("Couldn't apply disk configuration");
-		die();
-	}
-}
 
 
 static void parse_cmdline_option(char *name)
@@ -311,8 +97,8 @@ static void parse_cmdline_option(char *name)
 		g_scratch_size = atoi(value);
 	} else if (!strcmp(name, "droidboot.minbatt")) {
 		g_min_battery = atoi(value);
-	} else if (!strcmp(name, "droidboot.updatepause")) {
-		g_update_pause = atoi(value);
+	} else if (!strcmp(name, "droidboot.fstab")) {
+		g_fstab_path = xstrdup(value);
 	} else {
 		pr_error("Unknown parameter %s, ignoring\n", name);
 	}
@@ -321,8 +107,6 @@ static void parse_cmdline_option(char *name)
 
 int main(int argc, char **argv)
 {
-	char *config_location;
-
 	/* Files written only read/writable by root */
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
@@ -373,17 +157,9 @@ int main(int argc, char **argv)
 	}
 #endif
 
-	if (argc > 1)
-		config_location = argv[1];
-	else
-		config_location = DISK_CONFIG_LOCATION;
-
-	setup_disk_information(config_location);
-
+	load_volume_table(g_fstab_path);
 	aboot_register_commands();
-
 	register_droidboot_plugins();
-
 	fastboot_init(g_scratch_size * MEGABYTE);
 
 	/* Shouldn't get here */

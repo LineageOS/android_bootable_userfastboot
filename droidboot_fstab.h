@@ -41,6 +41,9 @@ void load_volume_table();
 // Return the Volume* record for this path (or NULL).
 Volume* volume_for_path(const char* path);
 
+// Return Volume* record for named entry (minus the leading '/')
+Volume *volume_for_name(const char *name);
+
 // Return Volume* record for a particular device node (or NULL)
 Volume* volume_for_device(const char* device);
 

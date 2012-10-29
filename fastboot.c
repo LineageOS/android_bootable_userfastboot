@@ -66,14 +66,12 @@ void fastboot_register(const char *prefix,
 				       unsigned sz))
 {
 	struct fastboot_cmd *cmd;
-	cmd = malloc(sizeof(*cmd));
-	if (cmd) {
-		cmd->prefix = prefix;
-		cmd->prefix_len = strlen(prefix);
-		cmd->handle = handle;
-		cmd->next = cmdlist;
-		cmdlist = cmd;
-	}
+	cmd = xmalloc(sizeof(*cmd));
+	cmd->prefix = prefix;
+	cmd->prefix_len = strlen(prefix);
+	cmd->handle = handle;
+	cmd->next = cmdlist;
+	cmdlist = cmd;
 }
 
 static struct fastboot_var *varlist;
@@ -81,13 +79,11 @@ static struct fastboot_var *varlist;
 void fastboot_publish(const char *name, const char *value)
 {
 	struct fastboot_var *var;
-	var = malloc(sizeof(*var));
-	if (var) {
-		var->name = name;
-		var->value = value;
-		var->next = varlist;
-		varlist = var;
-	}
+	var = xmalloc(sizeof(*var));
+	var->name = name;
+	var->value = value;
+	var->next = varlist;
+	varlist = var;
 }
 
 const char *fastboot_getvar(const char *name)
@@ -399,12 +395,7 @@ int fastboot_init(unsigned size)
 {
 	pr_verbose("fastboot_init()\n");
 	download_max = size;
-	download_base = malloc(size);
-	if (download_base == NULL) {
-		pr_error("scratch malloc of %u failed in fastboot."
-			" Unable to continue.\n\n", size);
-		die();
-	}
+	download_base = xmalloc(size);
 
 	fastboot_register("getvar:", cmd_getvar);
 	fastboot_register("download:", cmd_download);

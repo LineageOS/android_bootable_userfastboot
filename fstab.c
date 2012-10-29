@@ -48,7 +48,7 @@ static int parse_options(char *options, Volume * volume)
 	return 0;
 }
 
-void load_volume_table()
+void load_volume_table(const char *path)
 {
 	int alloc = 2;
 	device_volumes = malloc(alloc * sizeof(Volume));
@@ -65,10 +65,10 @@ void load_volume_table()
 	device_volumes[0].length = 0;
 	num_volumes = 1;
 
-	FILE *fstab = fopen(RECOVERY_FSTAB_LOCATION, "r");
+	FILE *fstab = fopen(path, "r");
 	if (fstab == NULL) {
 		pr_error("failed to open %s (%s)\n",
-		     RECOVERY_FSTAB_LOCATION, strerror(errno));
+		     path, strerror(errno));
 		return;
 	}
 
@@ -150,6 +150,17 @@ Volume *volume_for_path(const char *path)
 		}
 	}
 	return NULL;
+}
+
+Volume *volume_for_name(const char *name)
+{
+	char *pat;
+	Volume *vol;
+	/* recovery.fstab entries are all prefixed with '/' */
+	pat = xasprintf("/%s", name);
+	vol = volume_for_path(pat);
+	free(pat);
+	return vol;
 }
 
 Volume *volume_for_device(const char *device)

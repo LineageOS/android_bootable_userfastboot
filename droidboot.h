@@ -34,17 +34,11 @@ extern pthread_mutex_t action_mutex;
 /* If set, apply this update on 'fastboot continue' */
 extern char *g_update_location;
 
-#define DISK_CONFIG_LOCATION	"/system/etc/disk_layout.conf"
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define DROIDBOOT_VERSION       "02.01"
-
-/* In disk_layout.conf */
-#define CACHE_PTN		"cache"
-#define DATA_PTN		"userdata"
+#define DROIDBOOT_VERSION       "03.00"
 
 /* Volume entry in recovery.fstab for the SD card */
 #define SDCARD_VOLUME		"/sdcard"
-#define CACHE_VOLUME		"/cache"
 
 #define MSEC_PER_SEC            (1000LL)
 

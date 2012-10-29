@@ -47,7 +47,6 @@
 
 #include <cutils/android_reboot.h>
 #include <cutils/hashmap.h>
-#include <diskconfig/diskconfig.h>
 
 /* from ext4_utils for sparse ext4 images */
 #include <sparse_format.h>
@@ -127,11 +126,7 @@ static int aboot_register_cmd(Hashmap *map, char *key, void *callback)
 {
 	char *k;
 
-	k = strdup(key);
-	if (!k) {
-		pr_perror("strdup");
-		return -1;
-	}
+	k = xstrdup(key);
 	if (hashmapGet(map, k)) {
 		pr_error("key collision '%s'\n", k);
 		free(k);
@@ -157,17 +152,18 @@ int aboot_register_oem_cmd(char *key, oem_func callback)
  * its device node. No parameters. */
 static void cmd_erase(char *part_name, void *data, unsigned sz)
 {
-	struct part_info *ptn;
+	Volume *vol;
 
 	pr_info("%s: %s\n", __func__, part_name);
-	ptn = find_part(disk_info, part_name);
-	if (ptn == NULL) {
+
+	vol = volume_for_name(part_name);
+	if (vol == NULL) {
 		fastboot_fail("unknown partition name");
 		return;
 	}
 
 	pr_debug("Erasing %s.\n", part_name);
-	if (erase_partition(ptn))
+	if (erase_partition(vol))
 		fastboot_fail("Can't erase partition");
 	else
 		fastboot_okay("");
@@ -177,33 +173,31 @@ static void cmd_erase(char *part_name, void *data, unsigned sz)
 
 static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
 {
-	struct part_info *cacheptn;
+	Volume *cachevol;
 	int action = !hashmapContainsKey(params, "noaction");
 	int append = hashmapContainsKey(params, "append");
 
-	cacheptn = find_part(disk_info, CACHE_PTN);
-	if (!cacheptn) {
-		pr_error("Couldn't find " CACHE_PTN " partition. Is your "
-				"disk_layout.conf valid?\n");
+	cachevol = volume_for_path("/cache");
+	if (!cachevol) {
+		pr_error("Couldn't find cache partition. Is your recovery.fstab valid?\n");
 		return -1;
 	}
-	if (mount_partition(cacheptn)) {
-		pr_error("Couldn't mount " CACHE_PTN "partition\n");
+	if (mount_partition(cachevol)) {
+		pr_error("Couldn't mount cache partition\n");
 		return -1;
 	}
 
 	/* Once the update is applied this file is deleted */
-	if (named_file_write("/mnt/" CACHE_PTN "/droidboot.update.zip",
+	if (named_file_write("/mnt/cache/droidboot.update.zip",
 				data, sz, 0, append)) {
-		pr_error("Couldn't write update package to " CACHE_PTN
-				" partition.\n");
-		unmount_partition(cacheptn);
+		pr_error("Couldn't write update package to cache partition.\n");
+		unmount_partition(cachevol);
 		return -1;
 	}
-	unmount_partition(cacheptn);
+	unmount_partition(cachevol);
 
 	if (action) {
-		apply_sw_update(CACHE_VOLUME "/droidboot.update.zip", 1);
+		apply_sw_update("/cache/droidboot.update.zip", 1);
 		return -1;
 	}
 	return 0;
@@ -216,10 +210,8 @@ static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
  *
  * The parameter targetspec can be one of several possibilities:
  *
- * "disk" : Write directly to the disk node specified in disk_layout.conf,
- *          whatever it is named there.
  * <name> : Look in the flash_cmds table and execute the callback function.
- *          If not found, lookup the named partition in disk_layout.conf 
+ *          If not found, lookup the named partition in recovery.fstab
  *          and write to its corresponding device node
  *
  * Targetspec may also specify a comma separated list of parameters
@@ -244,13 +236,10 @@ static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
  */
 static void cmd_flash(char *targetspec, void *data, unsigned sz)
 {
-	char *device;
-	struct part_info *ptn = NULL;
-	int free_device = 0;
-	int do_ext_checks = 0;
 	struct flash_target tgt;
 	flash_func cb;
 	int ret;
+        Volume *vol;
 
 	int action;
 	char *imgtype;
@@ -260,9 +249,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 	process_target(targetspec, &tgt);
 	pr_verbose("data size %u\n", sz);
 
-	if (!strcmp(tgt.name, "disk")) {
-		device = disk_info->device;
-	} else if ( (cb = hashmapGet(flash_cmds, tgt.name)) ) {
+	if ( (cb = hashmapGet(flash_cmds, tgt.name)) ) {
 		/* Use our table of flash functions registered by platform
 		 * specific plugin libraries */
 		int cbret;
@@ -274,13 +261,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 			fastboot_okay("");
 		goto out;
 	} else {
-		free_device = 1;
-		device = find_part_device(disk_info, tgt.name);
-		if (!device) {
-			fastboot_fail("unknown partition specified");
-			goto out;
-		}
-		ptn = find_part(disk_info, tgt.name);
+		vol = volume_for_name(tgt.name);
 	}
 
 	action = !hashmapContainsKey(tgt.params, "noaction");
@@ -306,12 +287,12 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		offset = atol(offsetstr) * multiplier;
 	}
 
-	if (!is_valid_blkdev(device)) {
+	if (!is_valid_blkdev(vol->device)) {
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out;
 	}
 	pr_debug("Writing %u bytes to %s at offset: %jd\n",
-				sz, device, (intmax_t)offset);
+				sz, vol->device, (intmax_t)offset);
 	if (!strcmp(imgtype, "raw")) {
 		pr_debug("File type is raw image\n");
 
@@ -320,13 +301,13 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 			/* If there is enough data to hold the header,
 			 * and MAGIC appears in header,
 			 * then it is a sparse ext4 image */
-			ret = named_file_write_ext4_sparse(device, data, sz);
+			ret = named_file_write_ext4_sparse(vol->device, data, sz);
 		} else {
-			ret = named_file_write(device, data, sz, offset, 0);
+			ret = named_file_write(vol->device, data, sz, offset, 0);
 		}
 	} else if (!strcmp(imgtype, "gzip")) {
 		pr_debug("File type is gzipped raw image\n");
-		ret = named_file_write_decompress_gzip(device, data, sz, offset, 0);
+		ret = named_file_write_decompress_gzip(vol->device, data, sz, offset, 0);
 	} else {
 		pr_debug("Unknown data type '%s'\n", imgtype);
 		ret = -1;
@@ -338,34 +319,11 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 	}
 	sync();
 
-	pr_debug("wrote %u bytes to %s\n", sz, device);
+	pr_debug("wrote %u bytes to %s\n", sz, vol->device);
 
 	if (action) {
-		/* Check if we wrote to the base device node. If so,
-		 * re-sync the partition table in case we wrote out
-		 * a new one */
-		if (!strcmp(device, disk_info->device)) {
-			int fd = open(device, O_RDWR);
-			if (fd < 0) {
-				fastboot_fail("could not open device node");
-				goto out;
-			}
-			pr_verbose("sync partition table\n");
-			ioctl(fd, BLKRRPART, NULL);
-			close(fd);
-		}
-
-		/* Make sure this is really an ext4 partition before we try to
-		 * run some disk checks and resize it, ptn->type isn't
-		 * sufficient information */
-		if (ptn && ptn->type == PC_PART_TYPE_LINUX) {
-			if (check_ext_superblock(ptn, &do_ext_checks)) {
-				fastboot_fail("couldn't check superblock");
-				goto out;
-			}
-		}
-		if (do_ext_checks) {
-			if (ext4_filesystem_checks(device, ptn)) {
+		if (!strcmp(vol->fs_type, "ext4")) {
+			if (ext4_filesystem_checks(vol)) {
 				fastboot_fail("ext4 filesystem error");
 				goto out;
 			}
@@ -374,8 +332,6 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 
 	fastboot_okay("");
 out:
-	if (device && free_device)
-		free(device);
 	hashmapFree(tgt.params);
 }
 
@@ -390,12 +346,7 @@ static void cmd_oem(char *arg, void *data, unsigned sz)
 
 	while (*arg == ' ')
 		arg++;
-	command = strdup(arg); /* Can't use strtok() on const strings */
-	if (!command) {
-		pr_perror("strdup");
-		fastboot_fail("memory allocation error");
-		return;
-	}
+	command = xstrdup(arg); /* Can't use strtok() on const strings */
 
 	for (str1 = command; argc < MAX_OEM_ARGS; str1 = NULL) {
 		argv[argc] = strtok_r(str1, " \t", &saveptr);
@@ -466,16 +417,6 @@ static void cmd_reboot_bl(char *arg, void *data, unsigned sz)
 	pr_error("Reboot failed");
 }
 
-static void cmd_continue(char *arg, void *data, unsigned sz)
-{
-	if (g_update_location) {
-		apply_sw_update(g_update_location, 1);
-		fastboot_fail("Unable to apply SW update");
-	} else {
-		cmd_reboot(arg, data, sz);
-	}
-}
-
 void aboot_register_commands(void)
 {
 	fastboot_register("oem", cmd_oem);
@@ -484,7 +425,7 @@ void aboot_register_commands(void)
 	fastboot_register("reboot-bootloader", cmd_reboot_bl);
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
-	fastboot_register("continue", cmd_continue);
+	fastboot_register("continue", cmd_reboot);
 
 	fastboot_publish("product", DEVICE_NAME);
 	fastboot_publish("kernel", "droidboot");

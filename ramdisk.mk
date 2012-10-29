@@ -16,7 +16,6 @@ droidboot_modules := \
 	mksh \
 	systembinsh \
 	toolbox \
-	libdiskconfig \
 	libext2fs \
 	libext2_com_err \
 	libext2_e2p \

@@ -24,6 +24,8 @@
 #include <ctype.h>
 #include <stdio.h>
 
+#include <cutils/properties.h>
+
 #include "droidboot_fstab.h"
 #include "droidboot.h"
 #include "droidboot_ui.h"
@@ -48,8 +50,9 @@ static int parse_options(char *options, Volume * volume)
 	return 0;
 }
 
-void load_volume_table(const char *path)
+void load_volume_table()
 {
+	char fstab_path[PROPERTY_VALUE_MAX];
 	int alloc = 2;
 	device_volumes = malloc(alloc * sizeof(Volume));
         if (!device_volumes) {
@@ -65,10 +68,12 @@ void load_volume_table(const char *path)
 	device_volumes[0].length = 0;
 	num_volumes = 1;
 
-	FILE *fstab = fopen(path, "r");
+	property_get("ro.boot.recovery.fstab", fstab_path,
+			"/etc/recovery.fstab");
+	FILE *fstab = fopen(fstab_path, "r");
 	if (fstab == NULL) {
 		pr_error("failed to open %s (%s)\n",
-		     path, strerror(errno));
+		     fstab_path, strerror(errno));
 		return;
 	}
 

@@ -72,9 +72,6 @@ static int g_scratch_size = 400;
  * minimum */
 static int g_min_battery = 0;
 
-/* Path to search for recovery.fstab */
-static char *g_fstab_path = RECOVERY_FSTAB_LOCATION;
-
 struct selabel_handle *sehandle;
 
 
@@ -97,8 +94,6 @@ static void parse_cmdline_option(char *name)
 		g_scratch_size = atoi(value);
 	} else if (!strcmp(name, "droidboot.minbatt")) {
 		g_min_battery = atoi(value);
-	} else if (!strcmp(name, "droidboot.fstab")) {
-		g_fstab_path = xstrdup(value);
 	} else {
 		pr_error("Unknown parameter %s, ignoring\n", name);
 	}
@@ -157,7 +152,7 @@ int main(int argc, char **argv)
 	}
 #endif
 
-	load_volume_table(g_fstab_path);
+	load_volume_table();
 	aboot_register_commands();
 	register_droidboot_plugins();
 	fastboot_init(g_scratch_size * MEGABYTE);

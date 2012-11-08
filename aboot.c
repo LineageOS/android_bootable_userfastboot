@@ -262,6 +262,10 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		goto out;
 	} else {
 		vol = volume_for_name(tgt.name);
+		if (!vol) {
+			fastboot_fail(tgt.name);
+			goto out;
+		}
 	}
 
 	action = !hashmapContainsKey(tgt.params, "noaction");

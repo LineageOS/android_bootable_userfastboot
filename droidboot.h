@@ -35,7 +35,7 @@ extern pthread_mutex_t action_mutex;
 extern char *g_update_location;
 
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define DROIDBOOT_VERSION       "03.00"
+#define DROIDBOOT_VERSION       "03.01"
 
 /* Volume entry in recovery.fstab for the SD card */
 #define SDCARD_VOLUME		"/sdcard"

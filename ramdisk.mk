@@ -34,7 +34,7 @@ droidboot_modules := \
 	init.net.eth0.sh \
 	simg2img \
 
-droidboot_system_files = $(call module-installed-files,$(droidboot_modules))
+droidboot_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(droidboot_modules)))
 
 ifneq ($(DROIDBOOT_NO_GUI),true)
 droidboot_resources_common := $(LOCAL_PATH)/res
@@ -47,7 +47,7 @@ define droidboot-copy-files
 $(hide) $(foreach srcfile,$(droidboot_system_files), \
 	destfile=$(patsubst $(1)/%,$(2)/%,$(srcfile)); \
 	mkdir -p `dirname $$destfile`; \
-	cp -fR $(srcfile) $$destfile; \
+	$(ACP) -fdp $(srcfile) $$destfile; \
 )
 endef
 
@@ -91,18 +91,18 @@ $(DROIDBOOT_RAMDISK): \
 	$(hide) mkdir -p $(droidboot_system_out)
 	$(hide) mkdir -p $(droidboot_system_out)/etc
 	$(hide) mkdir -p $(droidboot_system_out)/bin
-	$(hide) cp -fR $(TARGET_ROOT_OUT) $(droidboot_out)
+	$(hide) $(ACP) -fr $(TARGET_ROOT_OUT) $(droidboot_out)
 	$(hide) rm -f $(droidboot_root_out)/init*.rc
-	$(hide) cp -f $(droidboot_initrc) $(droidboot_root_out)
+	$(hide) $(ACP) -f $(droidboot_initrc) $(droidboot_root_out)
 ifneq ($(strip $(DROIDBOOT_HARDWARE_INITRC)),)
-	$(hide) cp -f $(DROIDBOOT_HARDWARE_INITRC) $(droidboot_root_out)
+	$(hide) $(ACP) -f $(DROIDBOOT_HARDWARE_INITRC) $(droidboot_root_out)
 endif
 ifneq ($(DROIDBOOT_NO_GUI),true)
-	$(hide) cp -rf $(droidboot_resources_common) $(droidboot_root_out)/
+	$(hide) $(ACP) -rf $(droidboot_resources_common) $(droidboot_root_out)/
 endif
-	$(hide) cp -f $(recovery_fstab) $(droidboot_etc_out)/recovery.fstab
+	$(hide) $(ACP) -f $(recovery_fstab) $(droidboot_etc_out)/recovery.fstab
 	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
-	$(hide) cp -f $(TARGET_DISK_LAYOUT_CONFIG) $(droidboot_etc_out)/disk_layout.conf
+	$(hide) $(ACP) -f $(TARGET_DISK_LAYOUT_CONFIG) $(droidboot_etc_out)/disk_layout.conf
 	$(hide) $(MKBOOTFS) $(droidboot_root_out) | $(MINIGZIP) > $@
 	@echo "Created Droidboot ramdisk: $@"
 

@@ -50,6 +50,7 @@
 
 /* from ext4_utils for sparse ext4 images */
 #include <sparse_format.h>
+#include <sparse/sparse.h>
 
 #include "fastboot.h"
 #include "droidboot.h"

@@ -9,16 +9,29 @@ LOCAL_SRC_FILES := \
 	util.c \
 	droidboot.c \
 	fstab.c \
+	graphics.c \
+	events.c \
+	resources.c \
 
+ifeq ($(TARGET_RECOVERY_PIXEL_FORMAT),"RGBX_8888")
+  LOCAL_CFLAGS += -DRECOVERY_RGBX
+endif
+ifeq ($(TARGET_RECOVERY_PIXEL_FORMAT),"BGRA_8888")
+  LOCAL_CFLAGS += -DRECOVERY_BGRA
+endif
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Werror
 
 LOCAL_MODULE := droidboot
 LOCAL_MODULE_TAGS := eng
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
-LOCAL_STATIC_LIBRARIES += libcharger libminui libpng libpixelflinger_static
+LOCAL_STATIC_LIBRARIES += libcharger libpng libpixelflinger_static
 LOCAL_STATIC_LIBRARIES += $(TARGET_DROIDBOOT_LIBS) $(TARGET_DROIDBOOT_EXTRA_LIBS)
-LOCAL_C_INCLUDES += bootable/recovery external/zlib system/extras/ext4_utils
+LOCAL_C_INCLUDES += bootable/recovery \
+		    external/zlib \
+		    external/libpng \
+		    system/core/libsparse \
+		    system/core/libsparse/include \
 
 # Each library in TARGET_DROIDBOOT_LIBS should have a function
 # named "<libname>_init()".  Here we emit a little C function that

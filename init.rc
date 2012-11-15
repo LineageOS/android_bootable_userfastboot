@@ -10,6 +10,7 @@ on init
 
     symlink /system/etc /etc
 
+    mkdir /tmp
     mount /tmp /tmp tmpfs
     mount /data /data tmpfs
 

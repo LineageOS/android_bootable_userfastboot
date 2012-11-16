@@ -74,7 +74,6 @@ endif
 $(DROIDBOOT_RAMDISK): \
 		$(LOCAL_PATH)/ramdisk.mk \
 		$(MKBOOTFS) \
-		$(TARGET_DISK_LAYOUT_CONFIG) \
 		$(INSTALLED_RAMDISK_TARGET) \
 		$(INSTALLED_SYSTEMIMAGE) \
 		$(MINIGZIP) \
@@ -103,7 +102,6 @@ ifneq ($(DROIDBOOT_NO_GUI),true)
 endif
 	$(hide) $(ACP) -f $(recovery_fstab) $(droidboot_etc_out)/recovery.fstab
 	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
-	$(hide) $(ACP) -f $(TARGET_DISK_LAYOUT_CONFIG) $(droidboot_etc_out)/disk_layout.conf
 	$(hide) $(MKBOOTFS) $(droidboot_root_out) | $(MINIGZIP) > $@
 	@echo "Created Droidboot ramdisk: $@"
 

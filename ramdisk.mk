@@ -95,7 +95,7 @@ $(DROIDBOOT_RAMDISK): \
 	$(hide) rm -f $(droidboot_root_out)/init*.rc
 	$(hide) $(ACP) -f $(droidboot_initrc) $(droidboot_root_out)
 ifneq ($(strip $(DROIDBOOT_HARDWARE_INITRC)),)
-	$(hide) $(ACP) -f $(DROIDBOOT_HARDWARE_INITRC) $(droidboot_root_out)
+	$(hide) $(ACP) -f $(DROIDBOOT_HARDWARE_INITRC) $(droidboot_root_out)/init.droidboot.rc
 endif
 ifneq ($(DROIDBOOT_NO_GUI),true)
 	$(hide) $(ACP) -rf $(droidboot_resources_common) $(droidboot_root_out)/

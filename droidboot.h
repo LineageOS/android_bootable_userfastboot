@@ -35,16 +35,9 @@ extern pthread_mutex_t action_mutex;
 extern char *g_update_location;
 
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define DROIDBOOT_VERSION       "03.01"
+#define DROIDBOOT_VERSION       "03.02"
 
 /* Volume entry in recovery.fstab for the SD card */
 #define SDCARD_VOLUME		"/sdcard"
-
-#define MSEC_PER_SEC            (1000LL)
-
-#define BATTERY_UNKNOWN_TIME    (2 * MSEC_PER_SEC)
-#define POWER_ON_KEY_TIME       (2 * MSEC_PER_SEC)
-#define UNPLUGGED_SHUTDOWN_TIME (30 * MSEC_PER_SEC)
-#define CAPACITY_POLL_INTERVAL  (5 * MSEC_PER_SEC)
 
 #endif

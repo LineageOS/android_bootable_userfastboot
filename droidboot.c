@@ -47,7 +47,6 @@
 #include <minui/minui.h>
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
-#include <charger/charger.h>
 
 #include "aboot.h"
 #include "droidboot_util.h"
@@ -67,10 +66,6 @@ pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Default size of memory buffer for image data */
 static int g_scratch_size = 400;
-
-/* Minimum battery % before we do anything. By default there is no
- * minimum */
-static int g_min_battery = 0;
 
 struct selabel_handle *sehandle;
 
@@ -92,8 +87,6 @@ static void parse_cmdline_option(char *name)
 
 	if (!strcmp(name, "droidboot.scratch")) {
 		g_scratch_size = atoi(value);
-	} else if (!strcmp(name, "droidboot.minbatt")) {
-		g_min_battery = atoi(value);
 	} else {
 		pr_error("Unknown parameter %s, ignoring\n", name);
 	}
@@ -110,32 +103,6 @@ int main(int argc, char **argv)
 
 	pr_info(" -- Droidboot %s for %s --\n", DROIDBOOT_VERSION, DEVICE_NAME);
 	import_kernel_cmdline(parse_cmdline_option);
-
-
-#ifdef USE_GUI
-	/* Enforce a minimum battery level */
-	if (g_min_battery != 0) {
-		pr_info("Verifying battery level >= %d%% before continuing\n",
-				g_min_battery);
-		klog_init();
-		klog_set_level(8);
-
-		switch (charger_run(g_min_battery, POWER_ON_KEY_TIME,
-					BATTERY_UNKNOWN_TIME,
-					UNPLUGGED_SHUTDOWN_TIME,
-					CAPACITY_POLL_INTERVAL)) {
-		case CHARGER_SHUTDOWN:
-			android_reboot(ANDROID_RB_POWEROFF, 0, 0);
-			break;
-		case CHARGER_PROCEED:
-			pr_info("Battery level is acceptable\n");
-			break;
-		default:
-			pr_error("mysterious return value from charger_run()\n");
-		}
-		ev_exit();
-	}
-#endif
 
 	ui_set_background(BACKGROUND_ICON_INSTALLING);
 

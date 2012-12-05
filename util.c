@@ -220,7 +220,10 @@ int named_file_write(const char *filename, const unsigned char *what,
 	int fd, ret, flags;
 
 	flags = O_RDWR | (append ? O_APPEND : O_CREAT);
-	fd = open(filename, flags);
+	if (flags & O_CREAT)
+		fd = open(filename, flags, 0600);
+	else
+		fd = open(filename, flags);
 	if (fd < 0) {
 		pr_error("file_write: Can't open file %s: %s\n",
 				filename, strerror(errno));

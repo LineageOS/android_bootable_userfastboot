@@ -13,14 +13,14 @@ LOCAL_SRC_FILES := \
 	events.c \
 	resources.c \
 
+LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
+	-W -Wall -Wno-unused-parameter -Werror
 ifeq ($(TARGET_RECOVERY_PIXEL_FORMAT),"RGBX_8888")
   LOCAL_CFLAGS += -DRECOVERY_RGBX
 endif
 ifeq ($(TARGET_RECOVERY_PIXEL_FORMAT),"BGRA_8888")
   LOCAL_CFLAGS += -DRECOVERY_BGRA
 endif
-LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
-	-W -Wall -Wno-unused-parameter -Werror
 
 LOCAL_MODULE := droidboot
 LOCAL_MODULE_TAGS := eng

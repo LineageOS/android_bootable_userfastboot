@@ -11,8 +11,8 @@ on init
     symlink /system/etc /etc
 
     mkdir /tmp
-    mount /tmp /tmp tmpfs
-    mount /data /data tmpfs
+    mount tmpfs tmpfs /tmp
+    chmod 1777 /tmp
 
     # USB Gadget initialization
     write /sys/class/android_usb/android0/enable 0

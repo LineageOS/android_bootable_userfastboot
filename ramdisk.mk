@@ -32,8 +32,9 @@ droidboot_modules := \
 	gzip \
 	droidboot \
 	netcfg \
-	init.net.eth0.sh \
+	init.utilitynet.sh \
 	simg2img \
+	dhcpcd \
 
 droidboot_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(droidboot_modules)))
 

@@ -123,6 +123,7 @@ $(DROIDBOOT_BOOTIMAGE): \
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
 		     --ramdisk $(DROIDBOOT_RAMDISK) \
 		     --cmdline "$(droidboot_cmdline)" \
+		     $(BOARD_MKBOOTIMG_ARGS) \
 		     --output $@
 	@echo "Created Droidboot bootimage: $@"
 

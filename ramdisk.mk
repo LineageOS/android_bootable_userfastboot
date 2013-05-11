@@ -54,9 +54,9 @@ $(hide) $(foreach srcfile,$(droidboot_system_files), \
 endef
 
 droidboot_out := $(PRODUCT_OUT)/droidboot
-droidboot_root_out := $(droidboot_out)/root
-droidboot_data_out := $(droidboot_root_out)/data
-droidboot_system_out := $(droidboot_root_out)/system
+DROIDBOOT_ROOT_OUT := $(droidboot_out)/root
+droidboot_data_out := $(DROIDBOOT_ROOT_OUT)/data
+droidboot_system_out := $(DROIDBOOT_ROOT_OUT)/system
 droidboot_etc_out := $(droidboot_system_out)/etc
 droidboot_initrc := $(LOCAL_PATH)/init.rc
 
@@ -84,33 +84,33 @@ $(DROIDBOOT_RAMDISK): \
 		$(droidboot_resources_deps) \
 		$(droidboot_system_files) \
 
-	$(hide) rm -rf $(droidboot_root_out)
-	$(hide) mkdir -p $(droidboot_root_out)
-	$(hide) mkdir -p $(droidboot_root_out)/sbin
-	$(hide) mkdir -p $(droidboot_root_out)/data
-	$(hide) mkdir -p $(droidboot_root_out)/mnt
+	$(hide) rm -rf $(DROIDBOOT_ROOT_OUT)
+	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)
+	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)/sbin
+	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)/data
+	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)/mnt
 	$(hide) mkdir -p $(droidboot_system_out)
 	$(hide) mkdir -p $(droidboot_system_out)/etc
 	$(hide) mkdir -p $(droidboot_system_out)/bin
 	$(hide) $(ACP) -fr $(TARGET_ROOT_OUT) $(droidboot_out)
-	$(hide) rm -f $(droidboot_root_out)/init*.rc
-	$(hide) $(ACP) -f $(droidboot_initrc) $(droidboot_root_out)
+	$(hide) rm -f $(DROIDBOOT_ROOT_OUT)/init*.rc
+	$(hide) $(ACP) -f $(droidboot_initrc) $(DROIDBOOT_ROOT_OUT)
 ifneq ($(strip $(DROIDBOOT_HARDWARE_INITRC)),)
-	$(hide) $(ACP) -f $(DROIDBOOT_HARDWARE_INITRC) $(droidboot_root_out)/init.droidboot.rc
+	$(hide) $(ACP) -f $(DROIDBOOT_HARDWARE_INITRC) $(DROIDBOOT_ROOT_OUT)/init.droidboot.rc
 endif
 ifneq ($(DROIDBOOT_NO_GUI),true)
-	$(hide) $(ACP) -rf $(droidboot_resources_common) $(droidboot_root_out)/
+	$(hide) $(ACP) -rf $(droidboot_resources_common) $(DROIDBOOT_ROOT_OUT)/
 endif
 	$(hide) $(ACP) -f $(recovery_fstab) $(droidboot_etc_out)/recovery.fstab
 	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
-	$(hide) $(MKBOOTFS) $(droidboot_root_out) | $(MINIGZIP) > $@
+	$(hide) $(MKBOOTFS) $(DROIDBOOT_ROOT_OUT) | $(MINIGZIP) > $@
 	@echo "Created Droidboot ramdisk: $@"
 
-droidboot_cmdline := g_android.fastboot=1
+DROIDBOOT_CMDLINE := g_android.fastboot=1
 ifneq ($(DROIDBOOT_SCRATCH_SIZE),)
-droidboot_cmdline += droidboot.scratch=$(DROIDBOOT_SCRATCH_SIZE)
+DROIDBOOT_CMDLINE += droidboot.scratch=$(DROIDBOOT_SCRATCH_SIZE)
 endif
-droidboot_cmdline += $(BOARD_KERNEL_CMDLINE)
+DROIDBOOT_CMDLINE += $(BOARD_KERNEL_CMDLINE)
 
 # Create a standard Android bootimage using the regular kernel and the
 # droidboot ramdisk.
@@ -122,7 +122,7 @@ $(DROIDBOOT_BOOTIMAGE): \
 
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
 		     --ramdisk $(DROIDBOOT_RAMDISK) \
-		     --cmdline "$(droidboot_cmdline)" \
+		     --cmdline "$(DROIDBOOT_CMDLINE)" \
 		     $(BOARD_MKBOOTIMG_ARGS) \
 		     --output $@
 	@echo "Created Droidboot bootimage: $@"

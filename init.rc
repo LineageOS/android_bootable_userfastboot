@@ -1,4 +1,6 @@
-import /init.droidboot.rc
+import /init.userfastboot.rc
+import /init.recovery.${ro.hardware}.rc
+import /init.recovery.composite.rc
 
 on early-init
     start ueventd
@@ -32,7 +34,7 @@ on boot
 service ueventd /sbin/ueventd
     critical
 
-service droidboot /system/bin/droidboot
+service userfastboot /system/bin/userfastboot
     console
     oneshot
 
@@ -40,6 +42,6 @@ service console /system/bin/sh
     console
     disabled
 
-on property:init.svc.droidboot=stopped
-    wait 2
+on property:init.svc.userfastboot=stopped
     start console
+

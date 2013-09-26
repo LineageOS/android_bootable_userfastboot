@@ -47,16 +47,17 @@
 
 #include <cutils/android_reboot.h>
 #include <cutils/hashmap.h>
+#include <cutils/properties.h>
 
 /* from ext4_utils for sparse ext4 images */
 #include <sparse_format.h>
 #include <sparse/sparse.h>
 
 #include "fastboot.h"
-#include "droidboot.h"
-#include "droidboot_util.h"
-#include "droidboot_plugin.h"
-#include "droidboot_ui.h"
+#include "userfastboot.h"
+#include "userfastboot_util.h"
+#include "userfastboot_plugin.h"
+#include "userfastboot_ui.h"
 
 #define CMD_SYSTEM		"system"
 #define CMD_SHOWTEXT		"showtext"
@@ -153,7 +154,7 @@ int aboot_register_oem_cmd(char *key, oem_func callback)
  * its device node. No parameters. */
 static void cmd_erase(char *part_name, void *data, unsigned sz)
 {
-	Volume *vol;
+	struct fstab_rec *vol;
 
 	pr_info("%s: %s\n", __func__, part_name);
 
@@ -172,9 +173,9 @@ static void cmd_erase(char *part_name, void *data, unsigned sz)
 }
 
 
-static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
+static int cmd_flash_ota_update(Hashmap *params, void *data, unsigned sz)
 {
-	Volume *cachevol;
+	struct fstab_rec *cachevol;
 	int action = !hashmapContainsKey(params, "noaction");
 	int append = hashmapContainsKey(params, "append");
 
@@ -189,7 +190,7 @@ static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
 	}
 
 	/* Once the update is applied this file is deleted */
-	if (named_file_write("/mnt/cache/droidboot.update.zip",
+	if (named_file_write("/mnt/cache/userfastboot.update.zip",
 				data, sz, 0, append)) {
 		pr_error("Couldn't write update package to cache partition.\n");
 		unmount_partition(cachevol);
@@ -198,7 +199,7 @@ static int cmd_flash_update(Hashmap *params, void *data, unsigned sz)
 	unmount_partition(cachevol);
 
 	if (action) {
-		apply_sw_update("/cache/droidboot.update.zip", 1);
+		apply_sw_update("/cache/userfastboot.update.zip", 1);
 		return -1;
 	}
 	return 0;
@@ -240,7 +241,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 	struct flash_target tgt;
 	flash_func cb;
 	int ret;
-        Volume *vol;
+        struct fstab_rec *vol;
 
 	int action;
 	char *imgtype;
@@ -292,12 +293,12 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		offset = atol(offsetstr) * multiplier;
 	}
 
-	if (!is_valid_blkdev(vol->device)) {
+	if (!is_valid_blkdev(vol->blk_device)) {
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out;
 	}
 	pr_debug("Writing %u bytes to %s at offset: %jd\n",
-				sz, vol->device, (intmax_t)offset);
+				sz, vol->blk_device, (intmax_t)offset);
 	if (!strcmp(imgtype, "raw")) {
 		pr_debug("File type is raw image\n");
 
@@ -306,13 +307,13 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 			/* If there is enough data to hold the header,
 			 * and MAGIC appears in header,
 			 * then it is a sparse ext4 image */
-			ret = named_file_write_ext4_sparse(vol->device, data, sz);
+			ret = named_file_write_ext4_sparse(vol->blk_device, data, sz);
 		} else {
-			ret = named_file_write(vol->device, data, sz, offset, 0);
+			ret = named_file_write(vol->blk_device, data, sz, offset, 0);
 		}
 	} else if (!strcmp(imgtype, "gzip")) {
 		pr_debug("File type is gzipped raw image\n");
-		ret = named_file_write_decompress_gzip(vol->device, data, sz, offset, 0);
+		ret = named_file_write_decompress_gzip(vol->blk_device, data, sz, offset, 0);
 	} else {
 		pr_debug("Unknown data type '%s'\n", imgtype);
 		ret = -1;
@@ -324,7 +325,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 	}
 	sync();
 
-	pr_debug("wrote %u bytes to %s\n", sz, vol->device);
+	pr_debug("wrote %u bytes to %s\n", sz, vol->blk_device);
 
 	if (action) {
 		if (!strcmp(vol->fs_type, "ext4")) {
@@ -417,9 +418,25 @@ static void cmd_reboot_bl(char *arg, void *data, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
-	pr_info("Restarting Droidboot...\n");
+	pr_info("Restarting UserFastBoot...\n");
 	android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
 	pr_error("Reboot failed");
+}
+
+static int start_adbd(int argc, char **argv)
+{
+	return system("adbd &");
+}
+
+static void publish_from_prop(char *key, char *prop, char *dfl)
+{
+	char val[PROPERTY_VALUE_MAX];
+	if (property_get(prop, val, dfl)) {
+		char *valcpy = strdup(val);
+		if (valcpy) {
+			fastboot_publish(key, valcpy);
+		}
+	}
 }
 
 void aboot_register_commands(void)
@@ -433,8 +450,13 @@ void aboot_register_commands(void)
 	fastboot_register("continue", cmd_reboot);
 
 	fastboot_publish("product", DEVICE_NAME);
-	fastboot_publish("kernel", "droidboot");
-	fastboot_publish("droidboot", DROIDBOOT_VERSION);
+	fastboot_publish("kernel", "userfastboot");
+	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
+	fastboot_publish("version-baseband", "unknown");
+	fastboot_publish("partition-type:system", "ext4");
+	fastboot_publish("partition-type:cache", "ext4");
+	fastboot_publish("partition-type:data", "ext4");
+	publish_from_prop("serialno", "ro.serialno", "unknown");
 
 	flash_cmds = hashmapCreate(8, strhash, strcompare);
 	oem_cmds = hashmapCreate(8, strhash, strcompare);
@@ -443,6 +465,6 @@ void aboot_register_commands(void)
 		die();
 	}
 
-	aboot_register_flash_cmd("update", cmd_flash_update);
-
+	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
+	aboot_register_oem_cmd("adbd", start_adbd);
 }

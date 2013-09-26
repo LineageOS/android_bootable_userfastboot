@@ -29,9 +29,9 @@
 #include <unistd.h>
 
 #include <cutils/android_reboot.h>
-#include <minui/minui.h>
+#include <minui.h>
 
-#include "droidboot_ui.h"
+#include "userfastboot_ui.h"
 
 #define MAX_COLS 96
 #define MAX_ROWS 32

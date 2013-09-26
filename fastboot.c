@@ -39,10 +39,10 @@
 #include <netinet/in.h>
 #include <poll.h>
 
-#include "droidboot.h"
-#include "droidboot_ui.h"
+#include "userfastboot.h"
+#include "userfastboot_ui.h"
 #include "fastboot.h"
-#include "droidboot_util.h"
+#include "userfastboot_util.h"
 
 #define MAGIC_LENGTH 64
 

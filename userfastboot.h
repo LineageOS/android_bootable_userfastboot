@@ -1,27 +1,23 @@
-#ifndef _DROIDBOOT_H_
-#define _DROIDBOOT_H_
+#ifndef _USERFASTBOOT_H_
+#define _USERFASTBOOT_H_
 
 #include <errno.h>
 #include <string.h>
 #include <stdint.h>
 #include <pthread.h>
 
-#ifdef HAVE_SELINUX
 #include <selinux/selinux.h>
 #include <selinux/label.h>
-#else
-struct selabel_handle;
-#endif
 
 extern struct selabel_handle *sehandle;
 
-#include <droidboot_fstab.h>
+#include <userfastboot_fstab.h>
 
 #define MEGABYTE	(1024 * 1024)
 
 /* Inspect a volume looking for an automatic SW update. If it's
  * there, provision filesystems and apply it. */
-int try_update_sw(Volume *vol);
+int try_update_sw(struct fstab_rec *vol);
 
 /* global libdiskconfig data structure representing the intended layout of
  * the internal disk, as read from /etc/disk_layout.conf */
@@ -35,9 +31,9 @@ extern pthread_mutex_t action_mutex;
 extern char *g_update_location;
 
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define DROIDBOOT_VERSION       "03.02"
+#define USERFASTBOOT_VERSION       "04.00"
 
-/* Volume entry in recovery.fstab for the SD card */
+/* struct fstab_rec entry in recovery.fstab for the SD card */
 #define SDCARD_VOLUME		"/sdcard"
 
 #endif

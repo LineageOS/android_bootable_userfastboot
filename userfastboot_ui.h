@@ -18,8 +18,8 @@
  * This is a simplified subset of the ui code in bootable/recovery/
  */
 
-#ifndef _DROIDBOOT_UI_H_
-#define _DROIDBOOT_UI_H_
+#ifndef _USERFASTBOOT_UI_H_
+#define _USERFASTBOOT_UI_H_
 
 #define pr_perror(x)	pr_error("%s failed: %s\n", x, strerror(errno))
 
@@ -99,7 +99,7 @@ typedef struct {
 #else /* !USE_GUI */
 
 #ifndef LOG_TAG
-#define LOG_TAG "droidboot"
+#define LOG_TAG "userfastboot"
 #endif
 #include <cutils/log.h>
 

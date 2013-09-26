@@ -4,7 +4,7 @@ LOCAL_PATH := $(call my-dir)
 # need and have some mechanism to pull in dependencies instead
 # of explicitly enumerating everything that goes in
 # use something like add-required-deps
-droidboot_modules := \
+userfastboot_modules := \
 	libc \
 	libcutils \
 	libnetutils \
@@ -12,6 +12,7 @@ droidboot_modules := \
 	liblog \
 	libm \
 	libstdc++ \
+	libselinux \
 	linker \
 	mksh \
 	systembinsh \
@@ -30,106 +31,105 @@ droidboot_modules := \
 	tune2fs \
 	e2fsck \
 	gzip \
-	droidboot \
+	userfastboot \
 	netcfg \
 	init.utilitynet.sh \
 	simg2img \
 	dhcpcd \
 
-droidboot_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(droidboot_modules)))
+userfastboot_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(userfastboot_modules)))
 
-ifneq ($(DROIDBOOT_NO_GUI),true)
-droidboot_resources_common := $(LOCAL_PATH)/res
-droidboot_resources_deps := $(shell find $(droidboot_resources_common) -type f)
+ifneq ($(USERFASTBOOT_NO_GUI),true)
+userfastboot_resources_common := $(LOCAL_PATH)/res
+userfastboot_resources_deps := $(shell find $(userfastboot_resources_common) -type f)
 endif
 
 # $(1): source base dir
 # $(2): target base dir
-define droidboot-copy-files
-$(hide) $(foreach srcfile,$(droidboot_system_files), \
+define userfastboot-copy-files
+$(hide) $(foreach srcfile,$(userfastboot_system_files), \
 	destfile=$(patsubst $(1)/%,$(2)/%,$(srcfile)); \
 	mkdir -p `dirname $$destfile`; \
 	$(ACP) -fdp $(srcfile) $$destfile; \
 )
 endef
 
-droidboot_out := $(PRODUCT_OUT)/droidboot
-DROIDBOOT_ROOT_OUT := $(droidboot_out)/root
-droidboot_data_out := $(DROIDBOOT_ROOT_OUT)/data
-droidboot_system_out := $(DROIDBOOT_ROOT_OUT)/system
-droidboot_etc_out := $(droidboot_system_out)/etc
-droidboot_initrc := $(LOCAL_PATH)/init.rc
+userfastboot_out := $(PRODUCT_OUT)/userfastboot
+USERFASTBOOT_ROOT_OUT := $(userfastboot_out)/root
+userfastboot_data_out := $(USERFASTBOOT_ROOT_OUT)/data
+userfastboot_system_out := $(USERFASTBOOT_ROOT_OUT)/system
+userfastboot_etc_out := $(userfastboot_system_out)/etc
+userfastboot_initrc := $(LOCAL_PATH)/init.rc
 
-DROIDBOOT_RAMDISK := $(droidboot_out)/ramdisk-droidboot.img.gz
-DROIDBOOT_BOOTIMAGE := $(PRODUCT_OUT)/droidboot.img
+USERFASTBOOT_RAMDISK := $(userfastboot_out)/ramdisk-fastboot.img.gz
+USERFASTBOOT_BOOTIMAGE := $(PRODUCT_OUT)/fastboot.img
 
-# Used by Droidboot to know what device the SD card is on for OTA
+# Used by UserFastBoot to know what device the SD card is on for OTA
 ifdef TARGET_RECOVERY_FSTAB
 recovery_fstab := $(TARGET_RECOVERY_FSTAB)
 else
-recovery_fstab := $(TARGET_DEVICE_DIR)/recovery.fstab
+recovery_fstab := $(TARGET_DEVICE_DIR)/fstab
 endif
 
 # NOTE: You'll need to pass g_android.fastboot=1 on the kernel command line
 # so that the ADB driver exports the right protocol
-$(DROIDBOOT_RAMDISK): \
+$(USERFASTBOOT_RAMDISK): \
 		$(LOCAL_PATH)/ramdisk.mk \
 		$(MKBOOTFS) \
 		$(INSTALLED_RAMDISK_TARGET) \
 		$(INSTALLED_SYSTEMIMAGE) \
 		$(MINIGZIP) \
 		$(recovery_fstab) \
-		$(droidboot_initrc) \
-		$(DROIDBOOT_HARDWARE_INITRC) \
-		$(droidboot_resources_deps) \
-		$(droidboot_system_files) \
+		$(userfastboot_initrc) \
+		$(USERFASTBOOT_HARDWARE_INITRC) \
+		$(userfastboot_resources_deps) \
+		$(userfastboot_system_files) \
 
-	$(hide) rm -rf $(DROIDBOOT_ROOT_OUT)
-	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)
-	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)/sbin
-	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)/data
-	$(hide) mkdir -p $(DROIDBOOT_ROOT_OUT)/mnt
-	$(hide) mkdir -p $(droidboot_system_out)
-	$(hide) mkdir -p $(droidboot_system_out)/etc
-	$(hide) mkdir -p $(droidboot_system_out)/bin
-	$(hide) $(ACP) -fr $(TARGET_ROOT_OUT) $(droidboot_out)
-	$(hide) rm -f $(DROIDBOOT_ROOT_OUT)/init*.rc
-	$(hide) $(ACP) -f $(droidboot_initrc) $(DROIDBOOT_ROOT_OUT)
-ifneq ($(strip $(DROIDBOOT_HARDWARE_INITRC)),)
-	$(hide) $(ACP) -f $(DROIDBOOT_HARDWARE_INITRC) $(DROIDBOOT_ROOT_OUT)/init.droidboot.rc
+	$(hide) rm -rf $(USERFASTBOOT_ROOT_OUT)
+	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)
+	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)/sbin
+	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)/data
+	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)/mnt
+	$(hide) mkdir -p $(userfastboot_system_out)
+	$(hide) mkdir -p $(userfastboot_system_out)/etc
+	$(hide) mkdir -p $(userfastboot_system_out)/bin
+	$(hide) $(ACP) -fr $(TARGET_ROOT_OUT) $(userfastboot_out)
+	$(hide) $(ACP) -f $(userfastboot_initrc) $(USERFASTBOOT_ROOT_OUT)/init.rc
+ifneq ($(strip $(USERFASTBOOT_HARDWARE_INITRC)),)
+	$(hide) $(ACP) -f $(USERFASTBOOT_HARDWARE_INITRC) $(USERFASTBOOT_ROOT_OUT)/init.userfastboot.rc
 endif
-ifneq ($(DROIDBOOT_NO_GUI),true)
-	$(hide) $(ACP) -rf $(droidboot_resources_common) $(DROIDBOOT_ROOT_OUT)/
+ifneq ($(USERFASTBOOT_NO_GUI),true)
+	$(hide) $(ACP) -rf $(userfastboot_resources_common) $(USERFASTBOOT_ROOT_OUT)/
 endif
-	$(hide) $(ACP) -f $(recovery_fstab) $(droidboot_etc_out)/recovery.fstab
-	$(hide) $(call droidboot-copy-files,$(TARGET_OUT),$(droidboot_system_out))
-	$(hide) $(MKBOOTFS) $(DROIDBOOT_ROOT_OUT) | $(MINIGZIP) > $@
-	@echo "Created Droidboot ramdisk: $@"
+	$(hide) $(ACP) -f $(recovery_fstab) $(userfastboot_etc_out)/recovery.fstab
+	$(hide) $(call userfastboot-copy-files,$(TARGET_OUT),$(userfastboot_system_out))
+	$(hide) $(MKBOOTFS) $(USERFASTBOOT_ROOT_OUT) | $(MINIGZIP) > $@
+	@echo "Created UserFastBoot ramdisk: $@"
 
-DROIDBOOT_CMDLINE := g_android.fastboot=1
-ifneq ($(DROIDBOOT_SCRATCH_SIZE),)
-DROIDBOOT_CMDLINE += droidboot.scratch=$(DROIDBOOT_SCRATCH_SIZE)
+USERFASTBOOT_CMDLINE := g_android.fastboot=1
+ifneq ($(USERFASTBOOT_SCRATCH_SIZE),)
+USERFASTBOOT_CMDLINE += userfastboot.scratch=$(USERFASTBOOT_SCRATCH_SIZE)
 endif
-DROIDBOOT_CMDLINE += $(BOARD_KERNEL_CMDLINE)
+USERFASTBOOT_CMDLINE += $(BOARD_KERNEL_CMDLINE)
 
 # Create a standard Android bootimage using the regular kernel and the
-# droidboot ramdisk.
-$(DROIDBOOT_BOOTIMAGE): \
+# userfastboot ramdisk.
+$(USERFASTBOOT_BOOTIMAGE): \
 		$(INSTALLED_KERNEL_TARGET) \
-		$(DROIDBOOT_RAMDISK) \
+		$(USERFASTBOOT_RAMDISK) \
 		$(BOARD_KERNEL_CMDLINE_FILE) \
 		$(MKBOOTIMG) \
 
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
-		     --ramdisk $(DROIDBOOT_RAMDISK) \
-		     --cmdline "$(DROIDBOOT_CMDLINE)" \
+		     --ramdisk $(USERFASTBOOT_RAMDISK) \
+		     --cmdline "$(USERFASTBOOT_CMDLINE)" \
 		     $(BOARD_MKBOOTIMG_ARGS) \
 		     --output $@
-	@echo "Created Droidboot bootimage: $@"
+	@echo "Created UserFastBoot bootimage: $@"
 
-.PHONY: droidboot-ramdisk
-droidboot-ramdisk: $(DROIDBOOT_RAMDISK)
+.PHONY: userfastboot-ramdisk
+userfastboot-ramdisk: $(USERFASTBOOT_RAMDISK)
 
-.PHONY: droidboot-bootimage
-droidboot-bootimage: $(DROIDBOOT_BOOTIMAGE)
+.PHONY: userfastboot-bootimage
+userfastboot-bootimage: $(USERFASTBOOT_BOOTIMAGE)
 

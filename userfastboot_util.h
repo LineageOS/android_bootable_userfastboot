@@ -1,8 +1,8 @@
-#ifndef DROIDBOOT_UTIL_H
-#define DROIDBOOT_UTIL_H
+#ifndef USERFASTBOOT_UTIL_H
+#define USERFASTBOOT_UTIL_H
 
 #include <diskconfig/diskconfig.h>
-#include "droidboot_fstab.h"
+#include "userfastboot_fstab.h"
 
 /* File I/O */
 int named_file_write(const char *filename, const unsigned char *what,
@@ -31,11 +31,11 @@ char *xstrdup(const char *s);
 char *xasprintf(const char *fmt, ...);
 void *xmalloc(size_t size);
 
-/* Volume operations */
-int mount_partition(Volume *vol);
-int erase_partition(Volume *vol);
-int check_ext_superblock(Volume *vol, int *sb_present);
-int unmount_partition(Volume *vol);
-int ext4_filesystem_checks(Volume *vol);
+/* struct fstab_rec operations */
+int mount_partition(struct fstab_rec *vol);
+int erase_partition(struct fstab_rec *vol);
+int check_ext_superblock(struct fstab_rec *vol, int *sb_present);
+int unmount_partition(struct fstab_rec *vol);
+int ext4_filesystem_checks(struct fstab_rec *vol);
 
 #endif

@@ -46,10 +46,10 @@
 #include <cutils/android_reboot.h>
 
 #include "fastboot.h"
-#include "droidboot.h"
-#include "droidboot_ui.h"
-#include "droidboot_util.h"
-#include "droidboot_fstab.h"
+#include "userfastboot.h"
+#include "userfastboot_ui.h"
+#include "userfastboot_util.h"
+#include "userfastboot_fstab.h"
 
 /* make_ext4fs.h can't be included along with linux/ext3_fs.h.
  * This is the only item needed out of the former. */
@@ -58,7 +58,7 @@ extern int make_ext4fs(const char *filename, int64_t len,
 
 void die(void)
 {
-	pr_error("droidboot has encountered an unrecoverable problem, exiting!\n");
+	pr_error("userfastboot has encountered an unrecoverable problem, exiting!\n");
 	exit(1);
 }
 
@@ -274,7 +274,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 }
 
 
-static int get_volume_size(Volume *vol, uint64_t *sz)
+static int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 {
 	int fd;
 	int ret = -1;
@@ -284,7 +284,7 @@ static int get_volume_size(Volume *vol, uint64_t *sz)
 		return 0;
 	}
 
-	fd = open(vol->device, O_RDONLY);
+	fd = open(vol->blk_device, O_RDONLY);
 	if (fd < 0) {
 		pr_perror("open");
 		return -1;
@@ -302,7 +302,7 @@ static int get_volume_size(Volume *vol, uint64_t *sz)
 }
 
 
-int ext4_filesystem_checks(Volume *vol)
+int ext4_filesystem_checks(struct fstab_rec *vol)
 {
 #ifndef SKIP_FSCK
 	int ret;
@@ -310,7 +310,7 @@ int ext4_filesystem_checks(Volume *vol)
 	uint64_t length;
 	struct stat sb;
 
-	if (stat(vol->device, &sb) < 0) {
+	if (stat(vol->blk_device, &sb) < 0) {
 		pr_perror("stat");
 		return -1;
 	}
@@ -318,7 +318,7 @@ int ext4_filesystem_checks(Volume *vol)
 #ifndef SKIP_FSCK
 	/* run fdisk to make sure the partition is OK */
 	ret = execute_command("/system/bin/e2fsck -C 0 -fn %s",
-				vol->device);
+				vol->blk_device);
 	if (ret) {
 		pr_error("fsck of filesystem failed\n");
 		return -1;
@@ -326,11 +326,11 @@ int ext4_filesystem_checks(Volume *vol)
 #endif
 
 	if (get_volume_size(vol, &length)) {
-		pr_error("Couldn't get size of device %s\n", vol->device);
+		pr_error("Couldn't get size of device %s\n", vol->blk_device);
 		return -1;
 	}
 	if (execute_command("/system/bin/resize2fs -f -F %s %lluK",
-				vol->device, length >> 10)) {
+				vol->blk_device, length >> 10)) {
 		pr_error("could not resize filesystem to %lluK\n",
 				length >> 10);
 		return -1;
@@ -339,26 +339,26 @@ int ext4_filesystem_checks(Volume *vol)
 	/* Set mount count to 1 so that 1st mount on boot doesn't
 	 * result in complaints */
 	if (execute_command("/system/bin/tune2fs -C 1 %s",
-				vol->device)) {
+				vol->blk_device)) {
 		pr_error("tune2fs failed\n");
 		return -1;
 	}
 	return 0;
 }
 
-int mount_partition(Volume *vol)
+int mount_partition(struct fstab_rec *vol)
 {
 	char *mountpoint;
 	int status;
 
 	mountpoint = xasprintf("/mnt/%s", vol->mount_point);
-	status = mount_partition_device(vol->device, vol->fs_type, mountpoint);
+	status = mount_partition_device(vol->blk_device, vol->fs_type, mountpoint);
 	free(mountpoint);
 
 	return status;
 }
 
-int unmount_partition(Volume *vol)
+int unmount_partition(struct fstab_rec *vol)
 {
 	int ret;
 	char *mountpoint = NULL;
@@ -369,15 +369,15 @@ int unmount_partition(Volume *vol)
 	return ret;
 }
 
-int erase_partition(Volume *vol)
+int erase_partition(struct fstab_rec *vol)
 {
-	if (!is_valid_blkdev(vol->device)) {
+	if (!is_valid_blkdev(vol->blk_device)) {
 		pr_error("invalid destination node. partition disks?\n");
 		return -1;
 	}
 
 	if (!strcmp(vol->fs_type, "ext4")) {
-		if (make_ext4fs(vol->device, vol->length, &vol->mount_point[1],
+		if (make_ext4fs(vol->blk_device, vol->length, &vol->mount_point[1],
 					sehandle)) {
 		        pr_error("make_ext4fs failed\n");
 			return -1;
@@ -477,7 +477,7 @@ int is_valid_blkdev(const char *node)
 
 void apply_sw_update(const char *location, int send_fb_ok)
 {
-	Volume *cachevol;
+	struct fstab_rec *cachevol;
 	char *cmdline;
 
 	cmdline = xasprintf("--update_package=%s", location);

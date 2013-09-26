@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#ifndef DROIDBOOT_PLUGIN_H
-#define DROIDBOOT_PLUGIN_H
+#ifndef USERFASTBOOT_PLUGIN_H
+#define USERFASTBOOT_PLUGIN_H
 
-#include <droidboot_ui.h>
+#include <userfastboot_ui.h>
 #include <cutils/hashmap.h>
 
 typedef int (*flash_func)(Hashmap *params, void *data, unsigned sz);

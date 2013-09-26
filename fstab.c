@@ -25,160 +25,56 @@
 #include <stdio.h>
 
 #include <cutils/properties.h>
+#include <fs_mgr.h>
 
-#include "droidboot_fstab.h"
-#include "droidboot.h"
-#include "droidboot_ui.h"
-#include "droidboot_util.h"
+#include "userfastboot_fstab.h"
+#include "userfastboot.h"
+#include "userfastboot_ui.h"
+#include "userfastboot_util.h"
 
-static int num_volumes = 0;
-static Volume *device_volumes = NULL;
-
-static int parse_options(char *options, Volume * volume)
-{
-	char *option;
-	while ((option = strtok(options, ","))) {
-		options = NULL;
-
-		if (strncmp(option, "length=", 7) == 0) {
-			volume->length = strtoll(option + 7, NULL, 10);
-		} else {
-			pr_error("bad option \"%s\"\n", option);
-			return -1;
-		}
-	}
-	return 0;
-}
+static struct fstab *fstab = NULL;
 
 void load_volume_table()
 {
-	char fstab_path[PROPERTY_VALUE_MAX];
-	int alloc = 2;
-	device_volumes = malloc(alloc * sizeof(Volume));
-        if (!device_volumes) {
-		pr_perror("malloc");
-		die();
-	}
+	int i;
+	int ret;
 
-	// Insert an entry for /tmp, which is the ramdisk and is always mounted.
-	device_volumes[0].mount_point = "/tmp";
-	device_volumes[0].fs_type = "ramdisk";
-	device_volumes[0].device = NULL;
-	device_volumes[0].device2 = NULL;
-	device_volumes[0].length = 0;
-	num_volumes = 1;
-
-	property_get("ro.boot.recovery.fstab", fstab_path,
-			"/etc/recovery.fstab");
-	FILE *fstab = fopen(fstab_path, "r");
-	if (fstab == NULL) {
-		pr_error("failed to open %s (%s)\n",
-		     fstab_path, strerror(errno));
+	fstab = fs_mgr_read_fstab("/etc/recovery.fstab");
+	if (!fstab) {
+		pr_error("failed to read /etc/recovery.fstab\n");
 		return;
 	}
 
-	char buffer[1024];
-	int i;
-	while (fgets(buffer, sizeof(buffer) - 1, fstab)) {
-		for (i = 0; buffer[i] && isspace(buffer[i]); ++i) ;
-		if (buffer[i] == '\0' || buffer[i] == '#')
-			continue;
-
-		char *mount_point = strtok(buffer + i, " \t\n");
-		char *fs_type = strtok(NULL, " \t\n");
-		char *device = strtok(NULL, " \t\n");
-		// lines may optionally have a second device, to use if
-		// mounting the first one fails.
-		char *options = NULL;
-		char *device2 = strtok(NULL, " \t\n");
-		if (device2) {
-			if (device2[0] == '/') {
-				options = strtok(NULL, " \t\n");
-			} else {
-				options = device2;
-				device2 = NULL;
-			}
-		}
-
-		if (mount_point && fs_type && device) {
-			while (num_volumes >= alloc) {
-				alloc *= 2;
-				device_volumes =
-				    realloc(device_volumes,
-					    alloc * sizeof(Volume));
-				if (!device_volumes) {
-					pr_perror("malloc");
-					die();
-				}
-			}
-			device_volumes[num_volumes].mount_point =
-			    strdup(mount_point);
-			device_volumes[num_volumes].fs_type = strdup(fs_type);
-			device_volumes[num_volumes].device = strdup(device);
-			device_volumes[num_volumes].device2 =
-			    device2 ? strdup(device2) : NULL;
-
-			device_volumes[num_volumes].length = 0;
-			if (parse_options(options, device_volumes + num_volumes)
-			    != 0) {
-				pr_error("skipping malformed recovery.fstab line: %s\n", buffer);
-			} else {
-				++num_volumes;
-			}
-		} else {
-			pr_error("skipping malformed recovery.fstab line: %s\n",
-			     buffer);
-		}
+	ret = fs_mgr_add_entry(fstab, "/tmp", "ramdisk", "ramdisk", 0);
+	if (ret < 0) {
+		pr_error("failed to add /tmp entry to fstab\n");
+		fs_mgr_free_fstab(fstab);
+		fstab = NULL;
+		return;
 	}
 
-	fclose(fstab);
-
-	printf("recovery filesystem table\n");
-	printf("=========================\n");
-	for (i = 0; i < num_volumes; ++i) {
-		Volume *v = &device_volumes[i];
-		printf("  %d %s %s %s %s %lld\n", i, v->mount_point, v->fs_type,
-		       v->device, v->device2, v->length);
+	pr_debug("recovery filesystem table\n");
+	pr_debug("=========================\n");
+	for (i = 0; i < fstab->num_entries; ++i) {
+		struct fstab_rec *v = &fstab->recs[i];
+		pr_debug("  %d %s %s %s %lld\n", i, v->mount_point, v->fs_type,
+			 v->blk_device, v->length);
 	}
 	printf("\n");
 }
 
-Volume *volume_for_path(const char *path)
+struct fstab_rec *volume_for_path(const char *path)
 {
-	int i;
-	for (i = 0; i < num_volumes; ++i) {
-		Volume *v = device_volumes + i;
-		int len = strlen(v->mount_point);
-		if (strncmp(path, v->mount_point, len) == 0 &&
-		    (path[len] == '\0' || path[len] == '/')) {
-			return v;
-		}
-	}
-	return NULL;
+	return fs_mgr_get_entry_for_mount_point(fstab, path);
 }
 
-Volume *volume_for_name(const char *name)
+struct fstab_rec *volume_for_name(const char *name)
 {
 	char *pat;
-	Volume *vol;
+	struct fstab_rec *vol;
 	/* recovery.fstab entries are all prefixed with '/' */
 	pat = xasprintf("/%s", name);
 	vol = volume_for_path(pat);
 	free(pat);
 	return vol;
-}
-
-Volume *volume_for_device(const char *device)
-{
-	int i;
-	for (i = 0; i < num_volumes; ++i) {
-		Volume *v = device_volumes + i;
-		if (!v->device)
-			continue;
-		if (!strcmp(device, v->device) ||
-		    (v->device2 && !strcmp(device, v->device2))) {
-			return v;
-		}
-	}
-	return NULL;
 }

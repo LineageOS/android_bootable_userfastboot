@@ -190,25 +190,15 @@ out:
 }
 
 
-int named_file_write_ext4_sparse(const char *filename,
-	unsigned char *what, size_t sz)
+int named_file_write_ext4_sparse(const char *filename, const char *what)
 {
 	int ret;
 
-	ret = named_file_write("/tmp/s.img", what, sz, 0, 0);
-	if (ret) {
-		pr_error("writing sparse ext4 image to temporary file\n");
-		return -1;
-	}
-
-	ret = execute_command("/system/bin/simg2img /tmp/s.img %s",
-				filename);
+	ret = execute_command("/system/bin/simg2img %s %s", what, filename);
 	if (ret) {
 		pr_error("writing sparse ext4 image failed\n");
 		return -1;
 	}
-
-	execute_command("rm /tmp/s.img");
 
 	return 0;
 }

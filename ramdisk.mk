@@ -107,9 +107,6 @@ endif
 	@echo "Created UserFastBoot ramdisk: $@"
 
 USERFASTBOOT_CMDLINE := g_android.fastboot=1
-ifneq ($(USERFASTBOOT_SCRATCH_SIZE),)
-USERFASTBOOT_CMDLINE += userfastboot.scratch=$(USERFASTBOOT_SCRATCH_SIZE)
-endif
 USERFASTBOOT_CMDLINE += $(BOARD_KERNEL_CMDLINE)
 
 # Create a standard Android bootimage using the regular kernel and the

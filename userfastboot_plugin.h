@@ -20,7 +20,7 @@
 #include <userfastboot_ui.h>
 #include <cutils/hashmap.h>
 
-typedef int (*flash_func)(Hashmap *params, void *data, unsigned sz);
+typedef int (*flash_func)(Hashmap *params, int *fd, unsigned sz);
 
 #define MAX_OEM_ARGS 64
 

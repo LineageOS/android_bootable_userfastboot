@@ -152,7 +152,7 @@ int aboot_register_oem_cmd(char *key, oem_func callback)
 
 /* Erase a named partition by creating a new empty partition on top of
  * its device node. No parameters. */
-static void cmd_erase(char *part_name, void *data, unsigned sz)
+static void cmd_erase(char *part_name, int *fd, unsigned sz)
 {
 	struct fstab_rec *vol;
 
@@ -173,13 +173,14 @@ static void cmd_erase(char *part_name, void *data, unsigned sz)
 }
 
 
-static int cmd_flash_ota_update(Hashmap *params, void *data, unsigned sz)
+static int cmd_flash_ota_update(Hashmap *params, int *fd, unsigned sz)
 {
 	struct fstab_rec *cachevol;
 	int action = !hashmapContainsKey(params, "noaction");
 	int append = hashmapContainsKey(params, "append");
+	void *data = NULL;
 
-	cachevol = volume_for_path("/cache");
+        cachevol = volume_for_path("/cache");
 	if (!cachevol) {
 		pr_error("Couldn't find cache partition. Is your recovery.fstab valid?\n");
 		return -1;
@@ -189,14 +190,22 @@ static int cmd_flash_ota_update(Hashmap *params, void *data, unsigned sz)
 		return -1;
 	}
 
+	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
+	if (data == (void*)-1){
+		pr_error("Failed to mmap the file\n");
+		return -1;
+	}
+
 	/* Once the update is applied this file is deleted */
 	if (named_file_write("/mnt/cache/userfastboot.update.zip",
 				data, sz, 0, append)) {
 		pr_error("Couldn't write update package to cache partition.\n");
 		unmount_partition(cachevol);
+		munmap(data, sz);
 		return -1;
 	}
 	unmount_partition(cachevol);
+	munmap(data, sz);
 
 	if (action) {
 		apply_sw_update("/cache/userfastboot.update.zip", 1);
@@ -236,7 +245,7 @@ static int cmd_flash_ota_update(Hashmap *params, void *data, unsigned sz)
  *              'raw' Raw image (default)
  *              'gzip' Raw image compressed with gzip
  */
-static void cmd_flash(char *targetspec, void *data, unsigned sz)
+static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 {
 	struct flash_target tgt;
 	flash_func cb;
@@ -247,6 +256,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 	char *imgtype;
 	off_t offset = 0;
 	char *offsetstr;
+	void *data = NULL;
 
 	process_target(targetspec, &tgt);
 	pr_verbose("data size %u\n", sz);
@@ -255,7 +265,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		/* Use our table of flash functions registered by platform
 		 * specific plugin libraries */
 		int cbret;
-		cbret = cb(tgt.params, data, sz);
+		cbret = cb(tgt.params, fd, sz);
 		if (cbret) {
 			pr_error("%s flash failed!\n", tgt.name);
 			fastboot_fail(tgt.name);
@@ -293,9 +303,15 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		offset = atol(offsetstr) * multiplier;
 	}
 
+	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
+	if (data == (void*)-1){
+		pr_error("Failed to mmap the file\n");
+		goto out_map;
+	}
+
 	if (!is_valid_blkdev(vol->blk_device)) {
 		fastboot_fail("invalid destination node. partition disks?");
-		goto out;
+		goto out_map;
 	}
 	pr_debug("Writing %u bytes to %s at offset: %jd\n",
 				sz, vol->blk_device, (intmax_t)offset);
@@ -307,7 +323,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 			/* If there is enough data to hold the header,
 			 * and MAGIC appears in header,
 			 * then it is a sparse ext4 image */
-			ret = named_file_write_ext4_sparse(vol->blk_device, data, sz);
+			ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 		} else {
 			ret = named_file_write(vol->blk_device, data, sz, offset, 0);
 		}
@@ -321,7 +337,7 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 
 	if (ret) {
 		fastboot_fail("Can't write data to target device");
-		goto out;
+		goto out_map;
 	}
 	sync();
 
@@ -331,17 +347,25 @@ static void cmd_flash(char *targetspec, void *data, unsigned sz)
 		if (!strcmp(vol->fs_type, "ext4")) {
 			if (ext4_filesystem_checks(vol)) {
 				fastboot_fail("ext4 filesystem error");
-				goto out;
+				goto out_map;
 			}
 		}
 	}
 
 	fastboot_okay("");
+out_map:
+	ret = munmap(data, sz);
+	if (ret)
+		pr_error("Failed to munmap the file\n");
 out:
 	hashmapFree(tgt.params);
+	if (*fd >= 0){
+		close(*fd);
+		execute_command("rm %s", FASTBOOT_DOWNLOAD_TMP_FILE);
+	}
 }
 
-static void cmd_oem(char *arg, void *data, unsigned sz)
+static void cmd_oem(char *arg, int *fd, unsigned sz)
 {
 	char *command, *saveptr, *str1;
 	char *argv[MAX_OEM_ARGS];
@@ -400,12 +424,12 @@ out:
 	return;
 }
 
-static void cmd_boot(char *arg, void *data, unsigned sz)
+static void cmd_boot(char *arg, int *fd, unsigned sz)
 {
 	fastboot_fail("boot command stubbed on this platform!");
 }
 
-static void cmd_reboot(char *arg, void *data, unsigned sz)
+static void cmd_reboot(char *arg, int *fd, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
@@ -414,7 +438,7 @@ static void cmd_reboot(char *arg, void *data, unsigned sz)
 	pr_error("Reboot failed");
 }
 
-static void cmd_reboot_bl(char *arg, void *data, unsigned sz)
+static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
 {
 	fastboot_okay("");
 	sync();

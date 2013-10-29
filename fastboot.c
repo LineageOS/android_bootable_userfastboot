@@ -38,6 +38,8 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/mman.h>
+#include <errno.h>
 
 #include "userfastboot.h"
 #include "userfastboot_ui.h"
@@ -45,12 +47,13 @@
 #include "userfastboot_util.h"
 
 #define MAGIC_LENGTH 64
+#define XFER_MEM_SIZE 4096*1024
 
 struct fastboot_cmd {
 	struct fastboot_cmd *next;
 	const char *prefix;
 	unsigned prefix_len;
-	void (*handle) (char *arg, void *data, unsigned sz);
+	void (*handle) (char *arg, int *fd, unsigned sz);
 };
 
 struct fastboot_var {
@@ -62,7 +65,7 @@ struct fastboot_var {
 static struct fastboot_cmd *cmdlist;
 
 void fastboot_register(const char *prefix,
-		       void (*handle) (char *arg, void *data,
+		       void (*handle) (char *arg, int *fd,
 				       unsigned sz))
 {
 	struct fastboot_cmd *cmd;
@@ -97,9 +100,7 @@ const char *fastboot_getvar(const char *name)
 
 static unsigned char buffer[4096];
 
-static void *download_base;
-static unsigned download_max;
-static unsigned download_size;
+static unsigned download_size = 0;
 
 #define STATE_OFFLINE	0
 #define STATE_COMMAND	1
@@ -175,6 +176,32 @@ oops:
 	return -1;
 }
 
+static int usb_read_to_file(int fd, unsigned int len)
+{
+	char buf[XFER_MEM_SIZE];
+	int r = 0;
+	int count = 0;
+	lseek64(fd, 0, SEEK_SET);
+	while (len > 0)
+	{
+		unsigned int size = (len > XFER_MEM_SIZE) ? XFER_MEM_SIZE : len;
+		r = usb_read(buf, size);
+		if ((r < 0) || ((unsigned int)r != size)) {
+			pr_error("fastboot: usb_read_to_file error only got %d bytes\n", r);
+			return -1;
+		}
+		r = write(fd, buf, size);
+		if ((r < 0) || ((unsigned int)r != size)) {
+			pr_error("fastboot: usb_read_to_file error only wrote %d bytes to file. Needed:%d\n", r, size);
+			return -1;
+		}
+		len -= size;
+		count += size;
+	}
+
+	return count;
+}
+
 void fastboot_ack(const char *code, const char *reason)
 {
 	char response[MAGIC_LENGTH];
@@ -204,7 +231,7 @@ void fastboot_okay(const char *info)
 	fastboot_ack("OKAY", info);
 }
 
-static void cmd_getvar(char *arg, void *data, unsigned sz)
+static void cmd_getvar(char *arg, int *fd, unsigned sz)
 {
 	struct fastboot_var *var;
 
@@ -218,7 +245,7 @@ static void cmd_getvar(char *arg, void *data, unsigned sz)
 	fastboot_okay("");
 }
 
-static void cmd_download(char *arg, void *data, unsigned sz)
+static void cmd_download(char *arg, int *fd, unsigned sz)
 {
 	char response[MAGIC_LENGTH];
 	unsigned len;
@@ -228,16 +255,12 @@ static void cmd_download(char *arg, void *data, unsigned sz)
 	pr_debug("fastboot: cmd_download %d bytes\n", len);
 
 	download_size = 0;
-	if (len > download_max) {
-		fastboot_fail("data too large");
-		return;
-	}
 
 	sprintf(response, "DATA%08x", len);
 	if (usb_write(response, strlen(response)) < 0)
 		return;
 
-	r = usb_read(download_base, len);
+	r = usb_read_to_file(*fd, len);
 
 	if ((r < 0) || ((unsigned int)r != len)) {
 		pr_error("fastboot: cmd_download error only got %d bytes\n", r);
@@ -252,6 +275,7 @@ static void fastboot_command_loop(void)
 {
 	struct fastboot_cmd *cmd;
 	int r;
+	int fd = -1;
 	pr_debug("fastboot: processing commands\n");
 
 again:
@@ -268,10 +292,20 @@ again:
 				continue;
 			fastboot_state = STATE_COMMAND;
 			mui_show_indeterminate_progress();
+
+			fd = open(FASTBOOT_DOWNLOAD_TMP_FILE, O_RDWR | O_CREAT, 0600);
+			if (fd < 0){
+				pr_error("fastboot: command_loop cannot open the temp file errno:%d", errno);
+				fastboot_fail("fastboot failed");
+			}
+
 			pthread_mutex_lock(&action_mutex);
 			cmd->handle((char *)buffer + cmd->prefix_len,
-				    (void *)download_base, download_size);
+				    &fd, download_size);
 			pthread_mutex_unlock(&action_mutex);
+
+                        if (fd >= 0)
+				close(fd);
 			mui_reset_progress();
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");
@@ -391,11 +425,9 @@ static int fastboot_handler(void *arg)
 	return 0;
 }
 
-int fastboot_init(unsigned size)
+int fastboot_init()
 {
 	pr_verbose("fastboot_init()\n");
-	download_max = size;
-	download_base = xmalloc(size);
 
 	fastboot_register("getvar:", cmd_getvar);
 	fastboot_register("download:", cmd_download);

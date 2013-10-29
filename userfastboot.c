@@ -64,39 +64,10 @@
  * executes a command. Threads which touch the disk should do likewise. */
 pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* Default size of memory buffer for image data */
-static int g_scratch_size = 400;
-
 struct selabel_handle *sehandle;
-
-
-static void parse_cmdline_option(char *name)
-{
-	char *value = strchr(name, '=');
-
-	if (value == 0)
-		return;
-	*value++ = 0;
-	if (*name == 0)
-		return;
-
-	if (!strncmp(name, "userfastboot", 9))
-		pr_info("Got parameter %s = %s\n", name, value);
-	else
-		return;
-
-	if (!strcmp(name, "userfastboot.scratch")) {
-		g_scratch_size = atoi(value);
-	} else {
-		pr_error("Unknown parameter %s, ignoring\n", name);
-	}
-}
-
 
 int main(int argc, char **argv)
 {
-	char scratch_size_str[128];
-
 	/* Files written only read/writable by root */
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
@@ -106,7 +77,6 @@ int main(int argc, char **argv)
 #endif
 
 	pr_info(" -- UserFastBoot %s for %s --\n", USERFASTBOOT_VERSION, DEVICE_NAME);
-	import_kernel_cmdline(parse_cmdline_option);
 
 	mui_set_background(BACKGROUND_ICON_INSTALLING);
 
@@ -123,10 +93,7 @@ int main(int argc, char **argv)
 	load_volume_table();
 	aboot_register_commands();
 	register_userfastboot_plugins();
-	snprintf(scratch_size_str, sizeof(scratch_size_str), "%d",
-			g_scratch_size * MEGABYTE);
-	fastboot_publish("max-download-size", scratch_size_str);
-	fastboot_init(g_scratch_size * MEGABYTE);
+	fastboot_init();
 
 	/* Shouldn't get here */
 	exit(1);

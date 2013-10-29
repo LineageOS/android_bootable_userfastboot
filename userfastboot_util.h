@@ -9,8 +9,7 @@ int named_file_write(const char *filename, const unsigned char *what,
 		size_t sz, off_t offset, int append);
 int named_file_write_decompress_gzip(const char *filename,
 		unsigned char *what, size_t sz, off_t offset, int append);
-int named_file_write_ext4_sparse(const char *filename,
-		unsigned char *what, size_t sz);
+int named_file_write_ext4_sparse(const char *filename, const char *what);
 
 /* Attribute specification and -Werror prevents most security shenanigans with
  * these functions */

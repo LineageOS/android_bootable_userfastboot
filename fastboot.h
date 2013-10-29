@@ -28,8 +28,9 @@
 
 #ifndef __APP_FASTBOOT_H
 #define __APP_FASTBOOT_H
+#define FASTBOOT_DOWNLOAD_TMP_FILE "/tmp/fstboot.img"
 
-int fastboot_init(unsigned buffer_size);
+int fastboot_init();
 
 /* register a command handler 
  * - command handlers will be called if their prefix matches
@@ -37,7 +38,7 @@ int fastboot_init(unsigned buffer_size);
  *   to indicate success/failure before returning
  */
 void fastboot_register(const char *prefix,
-                       void (*handle)(char *arg, void *data, unsigned size));
+                       void (*handle)(char *arg, int *fd, unsigned size));
 
 /* Fetch the value of a fastboot_publish variable */
 const char *fastboot_getvar(const char *name);

@@ -39,7 +39,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/mount.h>
@@ -68,6 +70,8 @@ struct selabel_handle *sehandle;
 
 int main(int argc, char **argv)
 {
+	struct statfs buf;
+	int ret = 0;
 	/* Files written only read/writable by root */
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
@@ -93,7 +97,14 @@ int main(int argc, char **argv)
 	load_volume_table();
 	aboot_register_commands();
 	register_userfastboot_plugins();
-	fastboot_init();
+	ret = statfs("/tmp", &buf);
+	if (!ret){
+		unsigned long size = buf.f_bsize * buf.f_bfree;
+		fastboot_init(size);
+	}
+	else
+		pr_error("Error when acuiring tmpfs size:-%d\n", errno);
+
 
 	/* Shouldn't get here */
 	exit(1);

@@ -101,6 +101,7 @@ const char *fastboot_getvar(const char *name)
 static unsigned char buffer[4096];
 
 static unsigned download_size = 0;
+static unsigned long download_max = 0;
 
 #define STATE_OFFLINE	0
 #define STATE_COMMAND	1
@@ -255,6 +256,11 @@ static void cmd_download(char *arg, int *fd, unsigned sz)
 	pr_debug("fastboot: cmd_download %d bytes\n", len);
 
 	download_size = 0;
+
+	if (len > download_max) {
+		fastboot_fail("data too large");
+		return;
+	}
 
 	sprintf(response, "DATA%08x", len);
 	if (usb_write(response, strlen(response)) < 0)
@@ -425,14 +431,16 @@ static int fastboot_handler(void *arg)
 	return 0;
 }
 
-int fastboot_init()
+int fastboot_init(unsigned long size)
 {
+	char download_max_str[30];
 	pr_verbose("fastboot_init()\n");
-
+	download_max = size;
+	snprintf(download_max_str, sizeof(download_max_str), "%lu\n", download_max);
 	fastboot_register("getvar:", cmd_getvar);
 	fastboot_register("download:", cmd_download);
 	fastboot_publish("version", "0.5");
-
+	fastboot_publish("max-download-size", download_max_str);
 	fastboot_handler(NULL);
 
 	return 0;

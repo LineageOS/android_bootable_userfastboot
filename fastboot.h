@@ -30,7 +30,7 @@
 #define __APP_FASTBOOT_H
 #define FASTBOOT_DOWNLOAD_TMP_FILE "/tmp/fstboot.img"
 
-int fastboot_init();
+int fastboot_init(unsigned long size);
 
 /* register a command handler 
  * - command handlers will be called if their prefix matches

@@ -9,26 +9,18 @@ LOCAL_SRC_FILES := \
 	util.c \
 	userfastboot.c \
 	fstab.c \
-	graphics.c \
-	events.c \
-	resources.c \
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Werror
-ifeq ($(TARGET_RECOVERY_PIXEL_FORMAT),"RGBX_8888")
-  LOCAL_CFLAGS += -DRECOVERY_RGBX
-endif
-ifeq ($(TARGET_RECOVERY_PIXEL_FORMAT),"BGRA_8888")
-  LOCAL_CFLAGS += -DRECOVERY_BGRA
-endif
 
 LOCAL_MODULE := userfastboot
 LOCAL_MODULE_TAGS := eng
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
-LOCAL_STATIC_LIBRARIES += libpng libpixelflinger_static libselinux libfs_mgr
+LOCAL_STATIC_LIBRARIES += libmicroui libpng libpixelflinger_static libselinux libfs_mgr
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
 LOCAL_C_INCLUDES += external/zlib \
 		    external/libpng \
+		    bootable/userfastboot/microui \
 		    system/core/libsparse \
 		    system/core/fs_mgr/include \
 		    system/core/libsparse/include \
@@ -69,7 +61,6 @@ $(call intermediates-dir-for,EXECUTABLES,userfastboot)/aboot.o : $(inc)
 LOCAL_C_INCLUDES += $(dir $(inc))
 
 ifneq ($(USERFASTBOOT_NO_GUI),true)
-LOCAL_SRC_FILES += ui.c
 LOCAL_CFLAGS += -DUSE_GUI
 endif
 
@@ -80,3 +71,6 @@ endif
 include $(BUILD_EXECUTABLE)
 
 endif # TARGET_USE_USERFASTBOOT
+
+include $(LOCAL_PATH)/microui/Android.mk
+

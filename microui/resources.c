@@ -31,7 +31,7 @@
 
 #include <png.h>
 
-#include "minui.h"
+#include "microui.h"
 
 // libpng gives "undefined reference to 'pow'" errors, and I have no
 // idea how to convince the build system to link with -lm.  We don't

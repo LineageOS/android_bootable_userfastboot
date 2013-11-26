@@ -29,9 +29,8 @@
 #include <unistd.h>
 
 #include <cutils/android_reboot.h>
-#include <minui.h>
+#include "microui.h"
 
-#include "userfastboot_ui.h"
 
 #define MAX_COLS 96
 #define MAX_ROWS 32
@@ -65,6 +64,7 @@ static const struct { gr_surface* surface; const char *name; } BITMAPS[] = {
 
 static int gCurrentIcon = 0;
 static int gInstallingFrame = 0;
+static int gInit = 0;
 
 static enum ProgressBarType {
     PROGRESSBAR_TYPE_NONE,
@@ -289,8 +289,9 @@ static void *progress_thread(void *cookie)
     return NULL;
 }
 
-void ui_init(void)
+void mui_init(void)
 {
+    gInit = 1;
     gr_init();
 
     text_col = text_row = 0;
@@ -305,7 +306,7 @@ void ui_init(void)
     for (i = 0; BITMAPS[i].name != NULL; ++i) {
         int result = res_create_surface(BITMAPS[i].name, BITMAPS[i].surface);
         if (result < 0) {
-            pr_error("Missing bitmap %s\n(Code %d)\n", BITMAPS[i].name, result);
+            printf("Missing bitmap %s\n(Code %d)\n", BITMAPS[i].name, result);
         }
     }
 
@@ -317,7 +318,7 @@ void ui_init(void)
         sprintf(filename, "indeterminate%02d", i+1);
         int result = res_create_surface(filename, gProgressBarIndeterminate+i);
         if (result < 0) {
-            pr_error("Missing bitmap %s\n(Code %d)\n", filename, result);
+            printf("Missing bitmap %s\n(Code %d)\n", filename, result);
         }
     }
 
@@ -331,7 +332,7 @@ void ui_init(void)
             sprintf(filename, "icon_installing_overlay%02d", i+1);
             int result = res_create_surface(filename, gInstallationOverlay+i);
             if (result < 0) {
-                pr_error("Missing bitmap %s\n(Code %d)\n", filename, result);
+                printf("Missing bitmap %s\n(Code %d)\n", filename, result);
             }
         }
 
@@ -352,16 +353,22 @@ void ui_init(void)
     pthread_create(&t, NULL, progress_thread, NULL);
 }
 
-void ui_set_background(int icon)
+void mui_set_background(int icon)
 {
+    if (!gInit)
+        return;
+
     pthread_mutex_lock(&gUpdateMutex);
     gCurrentIcon = icon;
     update_screen_locked();
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-void ui_show_indeterminate_progress()
+void mui_show_indeterminate_progress()
 {
+    if (!gInit)
+        return;
+
     pthread_mutex_lock(&gUpdateMutex);
     if (gProgressBarType != PROGRESSBAR_TYPE_INDETERMINATE) {
         gProgressBarType = PROGRESSBAR_TYPE_INDETERMINATE;
@@ -370,8 +377,11 @@ void ui_show_indeterminate_progress()
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-void ui_show_progress(float portion, int seconds)
+void mui_show_progress(float portion, int seconds)
 {
+    if (!gInit)
+        return;
+
     pthread_mutex_lock(&gUpdateMutex);
     gProgressBarType = PROGRESSBAR_TYPE_NORMAL;
     gProgressScopeStart += gProgressScopeSize;
@@ -383,8 +393,11 @@ void ui_show_progress(float portion, int seconds)
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-void ui_set_progress(float fraction)
+void mui_set_progress(float fraction)
 {
+    if (!gInit)
+        return;
+
     pthread_mutex_lock(&gUpdateMutex);
     if (fraction < 0.0) fraction = 0.0;
     if (fraction > 1.0) fraction = 1.0;
@@ -400,8 +413,11 @@ void ui_set_progress(float fraction)
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-void ui_reset_progress()
+void mui_reset_progress()
 {
+    if (!gInit)
+        return;
+
     pthread_mutex_lock(&gUpdateMutex);
     gProgressBarType = PROGRESSBAR_TYPE_NONE;
     gProgressScopeStart = gProgressScopeSize = 0;
@@ -411,7 +427,7 @@ void ui_reset_progress()
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
-void ui_print(const char *fmt, ...)
+void mui_print(const char *fmt, ...)
 {
     char buf[256];
     va_list ap;
@@ -424,6 +440,9 @@ void ui_print(const char *fmt, ...)
         fputs("\n", stdout);
     else
         buf[strlen(buf) - 1] = '\0';
+
+    if (!gInit)
+        return;
 
     // This can get called before ui_init(), so be careful.
     pthread_mutex_lock(&gTextMutex);
@@ -454,8 +473,10 @@ void ui_print(const char *fmt, ...)
 
 }
 
-void ui_show_text(int visible)
+void mui_show_text(int visible)
 {
+    if (!gInit)
+        return;
     pthread_mutex_lock(&gUpdateMutex);
     show_text = visible;
     update_screen_locked();

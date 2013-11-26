@@ -22,7 +22,7 @@
 
 #include <linux/input.h>
 
-#include "minui.h"
+#include "microui.h"
 
 #define MAX_DEVICES 16
 #define MAX_MISC_FDS 16

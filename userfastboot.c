@@ -44,7 +44,7 @@
 #include <unistd.h>
 #include <sys/mount.h>
 
-#include <minui.h>
+#include <microui.h>
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
 
@@ -100,13 +100,15 @@ int main(int argc, char **argv)
 	/* Files written only read/writable by root */
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
-	/* initialize libminui */
-	ui_init();
+	/* initialize libmicroui */
+#ifdef USE_GUI
+	mui_init();
+#endif
 
 	pr_info(" -- UserFastBoot %s for %s --\n", USERFASTBOOT_VERSION, DEVICE_NAME);
 	import_kernel_cmdline(parse_cmdline_option);
 
-	ui_set_background(BACKGROUND_ICON_INSTALLING);
+	mui_set_background(BACKGROUND_ICON_INSTALLING);
 
 	struct selinux_opt seopts[] = {
 		{ SELABEL_OPT_PATH, "/file_contexts" }

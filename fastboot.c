@@ -267,12 +267,12 @@ again:
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
 				continue;
 			fastboot_state = STATE_COMMAND;
-			ui_show_indeterminate_progress();
+			mui_show_indeterminate_progress();
 			pthread_mutex_lock(&action_mutex);
 			cmd->handle((char *)buffer + cmd->prefix_len,
 				    (void *)download_base, download_size);
 			pthread_mutex_unlock(&action_mutex);
-			ui_reset_progress();
+			mui_reset_progress();
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");
 			goto again;

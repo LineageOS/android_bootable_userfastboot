@@ -389,7 +389,7 @@ static void cmd_oem(char *arg, void *data, unsigned sz)
 			fastboot_okay("");
 		}
 	} else if (strcmp(argv[0], CMD_SHOWTEXT) == 0) {
-		ui_show_text(1);
+		mui_show_text(1);
 		fastboot_okay("");
 	} else {
 		fastboot_fail("unknown OEM command");

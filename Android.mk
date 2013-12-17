@@ -16,7 +16,7 @@ LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 LOCAL_MODULE := userfastboot
 LOCAL_MODULE_TAGS := eng
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
-LOCAL_STATIC_LIBRARIES += libmicroui libpng libpixelflinger_static libselinux libfs_mgr
+LOCAL_STATIC_LIBRARIES += libmicroui libpng libpixelflinger_static  libselinux libfs_mgr libenc libstdc++
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
 LOCAL_C_INCLUDES += external/zlib \
 		    external/libpng \

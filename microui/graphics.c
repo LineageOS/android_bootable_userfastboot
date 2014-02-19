@@ -282,6 +282,10 @@ static void gr_init_font(void)
     unsigned char *in, data;
 
     gr_font = calloc(sizeof(*gr_font), 1);
+    if (gr_font == NULL) {
+        perror("calloc failed while initializing font");
+        return;
+    }
     ftex = &gr_font->texture;
 
     bits = malloc(font.width * font.height);

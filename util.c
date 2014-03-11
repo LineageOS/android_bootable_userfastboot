@@ -41,6 +41,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <linux/fs.h>
+#include <inttypes.h>
 
 #include <zlib.h>
 #include <cutils/android_reboot.h>
@@ -75,7 +76,7 @@ void *xmalloc(size_t size)
 {
 	void *ret = malloc(size);
 	if (!ret) {
-		pr_error("allocation size: %d\n", size);
+		pr_error("allocation size: %zd\n", size);
 		die_errno("malloc");
 	}
 	return ret;
@@ -316,7 +317,7 @@ int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 	} else {
 		pr_perror("BLKGETSIZE64");
 	}
-	pr_verbose("size is %llu\n", *sz);
+	pr_verbose("size is %" PRIu64 "\n", *sz);
 	close(fd);
 	return ret;
 }

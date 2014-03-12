@@ -23,10 +23,12 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include <cutils/properties.h>
 #include <fs_mgr.h>
 
+#include "fastboot.h"
 #include "userfastboot_fstab.h"
 #include "userfastboot.h"
 #include "userfastboot_ui.h"
@@ -78,3 +80,36 @@ struct fstab_rec *volume_for_name(const char *name)
 	free(pat);
 	return vol;
 }
+
+static void publish_part_data(struct fstab_rec *v)
+{
+	char *buf;
+	char *buf2;
+	uint64_t size;
+	char *name = v->mount_point + 1;
+
+	if (asprintf(&buf, "partition-type:%s", name) < 0) {
+		pr_error("out of memory\n");
+		die();
+	}
+	fastboot_publish(buf, v->fs_type);
+
+	if (asprintf(&buf, "partition-size:%s", name) < 0) {
+		pr_error("out of memory\n");
+		die();
+	}
+	get_volume_size(v, &size);
+	if (asprintf(&buf2, "%" PRIx64, size) < 0) {
+		pr_error("out of memory\n");
+		die();
+	}
+	fastboot_publish(buf, buf2);
+}
+
+void publish_all_part_data(void)
+{
+	int i;
+	for (i = 0; i < fstab->num_entries; i++)
+		publish_part_data(&fstab->recs[i]);
+}
+

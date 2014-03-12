@@ -82,6 +82,7 @@ static struct fastboot_var *varlist;
 void fastboot_publish(const char *name, const char *value)
 {
 	struct fastboot_var *var;
+	pr_verbose("publishing %s=%s\n", name, value);
 	var = xmalloc(sizeof(*var));
 	var->name = name;
 	var->value = value;
@@ -312,6 +313,7 @@ again:
 
                         if (fd >= 0)
 				close(fd);
+
 			mui_reset_progress();
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");

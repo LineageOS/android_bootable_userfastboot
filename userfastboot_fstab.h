@@ -27,5 +27,8 @@ struct fstab_rec* volume_for_path(const char* path);
 // Return struct fstab_rec* record for named entry (minus the leading '/')
 struct fstab_rec *volume_for_name(const char *name);
 
+// publish all the types and sizes of known partitions
+void publish_all_part_data(void);
+
 #endif
 

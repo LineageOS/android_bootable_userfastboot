@@ -172,7 +172,6 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
 
 }
 
-
 static int cmd_flash_ota_update(Hashmap *params, int *fd, unsigned sz)
 {
 	struct fstab_rec *cachevol;
@@ -232,18 +231,9 @@ static int cmd_flash_ota_update(Hashmap *params, int *fd, unsigned sz)
  * For flash commands not handled by a plug-in, the following parameters
  * can be set:
  *
- * noaction   : Do not perform any action after flashing the data. This is
- *              needed when breaking up a large image into chunks which
- *              have to be flashed separately; action should only be taken
- *              on the last one.
- *
  * offset=    : Write the image to the destination at a designated byte offset
  *              from the beginning of the device node. Suffixes "G", "M",
  *              and "K" are recognized.
- *
- * type=      : Supported values are:
- *              'raw' Raw image (default)
- *              'gzip' Raw image compressed with gzip
  */
 static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 {
@@ -252,11 +242,10 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	int ret;
         struct fstab_rec *vol;
 
-	int action;
-	char *imgtype;
 	off_t offset = 0;
 	char *offsetstr;
 	void *data = NULL;
+	uint32_t magic = 0;
 
 	process_target(targetspec, &tgt);
 	pr_verbose("data size %u\n", sz);
@@ -279,11 +268,6 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 			goto out;
 		}
 	}
-
-	action = !hashmapContainsKey(tgt.params, "noaction");
-	imgtype = hashmapGet(tgt.params, "type");
-	if (!imgtype)
-		imgtype = "raw";
 
 	if ( (offsetstr = hashmapGet(tgt.params, "offset")) ) {
 		off_t multiplier = 1;
@@ -315,26 +299,20 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	}
 	pr_debug("Writing %u bytes to %s at offset: %jd\n",
 				sz, vol->blk_device, (intmax_t)offset);
-	if (!strcmp(imgtype, "raw")) {
-		pr_debug("File type is raw image\n");
 
-		if ((sz >= sizeof(sparse_header_t)) &&
-			(((sparse_header_t*)data)->magic == SPARSE_HEADER_MAGIC)) {
-			/* If there is enough data to hold the header,
-			 * and MAGIC appears in header,
-			 * then it is a sparse ext4 image */
-			ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
-		} else {
-			ret = named_file_write(vol->blk_device, data, sz, offset, 0);
-		}
-	} else if (!strcmp(imgtype, "gzip")) {
-		pr_debug("File type is gzipped raw image\n");
-		ret = named_file_write_decompress_gzip(vol->blk_device, data, sz, offset, 0);
+	if (sz >= sizeof(magic))
+		memcpy(&magic, data, sizeof(magic));
+
+	if (magic == SPARSE_HEADER_MAGIC) {
+		/* If there is enough data to hold the header,
+		 * and MAGIC appears in header,
+		 * then it is a sparse ext4 image */
+		pr_info("Detected sparse header\n");
+		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
-		pr_debug("Unknown data type '%s'\n", imgtype);
-		ret = -1;
+		ret = named_file_write(vol->blk_device, data, sz, offset, 0);
 	}
-
+	pr_verbose("Done writing image\n");
 	if (ret) {
 		fastboot_fail("Can't write data to target device");
 		goto out_map;
@@ -342,15 +320,6 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	sync();
 
 	pr_debug("wrote %u bytes to %s\n", sz, vol->blk_device);
-
-	if (action) {
-		if (!strcmp(vol->fs_type, "ext4")) {
-			if (ext4_filesystem_checks(vol)) {
-				fastboot_fail("ext4 filesystem error");
-				goto out_map;
-			}
-		}
-	}
 
 	fastboot_okay("");
 out_map:
@@ -477,9 +446,6 @@ void aboot_register_commands(void)
 	fastboot_publish("kernel", "userfastboot");
 	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
 	fastboot_publish("version-baseband", "unknown");
-	fastboot_publish("partition-type:system", "ext4");
-	fastboot_publish("partition-type:cache", "ext4");
-	fastboot_publish("partition-type:data", "ext4");
 	publish_from_prop("serialno", "ro.serialno", "unknown");
 
 	flash_cmds = hashmapCreate(8, strhash, strcompare);
@@ -488,7 +454,7 @@ void aboot_register_commands(void)
 		pr_error("Memory allocation error\n");
 		die();
 	}
-
+	publish_all_part_data();
 	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
 	aboot_register_oem_cmd("adbd", start_adbd);
 }

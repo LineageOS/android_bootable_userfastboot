@@ -14,8 +14,7 @@ userfastboot_modules := \
 	libstdc++ \
 	libselinux \
 	linker \
-	mksh \
-	systembinsh \
+	sh \
 	toolbox \
 	libext2fs \
 	libext2_com_err \
@@ -34,7 +33,6 @@ userfastboot_modules := \
 	userfastboot \
 	netcfg \
 	init.utilitynet.sh \
-	simg2img \
 	dhcpcd \
 
 userfastboot_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(userfastboot_modules)))

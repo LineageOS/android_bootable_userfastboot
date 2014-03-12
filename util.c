@@ -44,6 +44,7 @@
 
 #include <zlib.h>
 #include <cutils/android_reboot.h>
+#include <sparse/sparse.h>
 
 #include "fastboot.h"
 #include "userfastboot.h"
@@ -192,15 +193,44 @@ out:
 
 int named_file_write_ext4_sparse(const char *filename, const char *what)
 {
-	int ret;
+	int infd = -1;
+	int outfd = -1;
+	int ret = -1;
+	struct sparse_file *s;
 
-	ret = execute_command("/system/bin/simg2img %s %s", what, filename);
-	if (ret) {
-		pr_error("writing sparse ext4 image failed\n");
-		return -1;
+	outfd = open(filename, O_WRONLY);
+	if (outfd < 0) {
+		pr_error("Coudln't open destination file %s\n", filename);
+		goto out;
+	}
+	infd = open(what, O_RDONLY);
+	if (infd < 0) {
+		pr_error("Couldn't open sparse input file\n");
+		goto out;
 	}
 
-	return 0;
+	pr_verbose("Importing sparse file data\n");
+	s = sparse_file_import(infd, true, false);
+	if (!s) {
+		pr_error("Couldn't import sparse file data\n");
+		goto out;
+	}
+
+	pr_verbose("Writing sparse file data\n");
+	if (sparse_file_write(s, outfd, false, false, false) < 0)
+		pr_error("Couldn't write output file");
+	else
+		ret = 0;
+
+	pr_verbose("Destroying sparse data stucture\n");
+	sparse_file_destroy(s);
+out:
+	if (infd >= 0)
+		close(infd);
+	if (outfd >= 0)
+		close(outfd);
+
+	return ret;
 }
 
 
@@ -264,7 +294,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 }
 
 
-static int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
+int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 {
 	int fd;
 	int ret = -1;
@@ -286,54 +316,9 @@ static int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 	} else {
 		pr_perror("BLKGETSIZE64");
 	}
-	pr_info("size is %llu\n", *sz);
+	pr_verbose("size is %llu\n", *sz);
 	close(fd);
 	return ret;
-}
-
-
-int ext4_filesystem_checks(struct fstab_rec *vol)
-{
-#ifndef SKIP_FSCK
-	int ret;
-#endif
-	uint64_t length;
-	struct stat sb;
-
-	if (stat(vol->blk_device, &sb) < 0) {
-		pr_perror("stat");
-		return -1;
-	}
-
-#ifndef SKIP_FSCK
-	/* run fdisk to make sure the partition is OK */
-	ret = execute_command("/system/bin/e2fsck -C 0 -fn %s",
-				vol->blk_device);
-	if (ret) {
-		pr_error("fsck of filesystem failed\n");
-		return -1;
-	}
-#endif
-
-	if (get_volume_size(vol, &length)) {
-		pr_error("Couldn't get size of device %s\n", vol->blk_device);
-		return -1;
-	}
-	if (execute_command("/system/bin/resize2fs -f -F %s %lluK",
-				vol->blk_device, length >> 10)) {
-		pr_error("could not resize filesystem to %lluK\n",
-				length >> 10);
-		return -1;
-	}
-
-	/* Set mount count to 1 so that 1st mount on boot doesn't
-	 * result in complaints */
-	if (execute_command("/system/bin/tune2fs -C 1 %s",
-				vol->blk_device)) {
-		pr_error("tune2fs failed\n");
-		return -1;
-	}
-	return 0;
 }
 
 int mount_partition(struct fstab_rec *vol)
@@ -361,22 +346,37 @@ int unmount_partition(struct fstab_rec *vol)
 
 int erase_partition(struct fstab_rec *vol)
 {
+	int fd;
+	uint64_t disk_size;
+	char zeroes[4096];
+
 	if (!is_valid_blkdev(vol->blk_device)) {
 		pr_error("invalid destination node. partition disks?\n");
 		return -1;
 	}
 
-	if (!strcmp(vol->fs_type, "ext4")) {
-		if (make_ext4fs(vol->blk_device, vol->length, &vol->mount_point[1],
-					sehandle)) {
-		        pr_error("make_ext4fs failed\n");
-			return -1;
-		}
-	} else {
-		pr_error("erase_partition: I can't handle fs_type %s\n",
-				vol->fs_type);
+	get_volume_size(vol, &disk_size);
+
+	fd = open(vol->blk_device, O_WRONLY);
+	if (fd < 0) {
+		pr_error("couldn't open block device %s\n", vol->blk_device);
 		return -1;
 	}
+
+	memset(zeroes, 0, sizeof(zeroes));
+	while (disk_size) {
+		ssize_t ret;
+
+		ret = write(fd, zeroes, sizeof(zeroes));
+		if (ret < 0) {
+			pr_error("Failed writing to device %s: %s\n", vol->blk_device, strerror(errno));
+			close(fd);
+			return -1;
+		}
+		disk_size -= ret;
+	}
+
+	close(fd);
 	return 0;
 }
 

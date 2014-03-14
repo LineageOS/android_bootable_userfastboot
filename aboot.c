@@ -53,6 +53,7 @@
 #include <sparse_format.h>
 #include <sparse/sparse.h>
 
+#include <bootloader.h>
 #include "fastboot.h"
 #include "userfastboot.h"
 #include "userfastboot_util.h"
@@ -395,7 +396,57 @@ out:
 
 static void cmd_boot(char *arg, int *fd, unsigned sz)
 {
-	fastboot_fail("boot command stubbed on this platform!");
+	/* Copy the boot image to the ESP (bootloader partition)
+	 * and set the BCB so that the loader knows to use it */
+	struct fstab_rec *vol_bootloader, *vol_misc;
+	struct bootloader_message bcb;
+	int success = 0;
+	void *data;
+
+	vol_bootloader = volume_for_name("bootloader");
+	if (vol_bootloader == NULL) {
+		fastboot_fail("can't find bootloader partition");
+		return;
+	}
+	vol_misc = volume_for_name("misc");
+	if (vol_misc == NULL) {
+		fastboot_fail("can't find misc partition");
+		return;
+	}
+	if (mount_partition(vol_bootloader)) {
+		fastboot_fail("couldn't mount bootloader partition");
+		return;
+	}
+
+	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
+	if (data == (void*)-1){
+		pr_error("Failed to mmap the file\n");
+		goto out;
+	}
+
+	if (named_file_write("/mnt/bootloader/bootonce.img",
+				data, sz, 0, 0)) {
+		pr_error("Couldn't write boot image to bootloader partition.\n");
+		goto out_unmap;
+	}
+
+	memset(&bcb, 0, sizeof(bcb));
+	snprintf(bcb.command, sizeof(bcb.command), "bootonce-\\bootonce.img");
+	if (named_file_write(vol_misc->blk_device, (void *)&bcb, sizeof(bcb), 0, 0)) {
+		pr_error("Couldn't update BCB!\n");
+		goto out_unmap;
+	}
+	success = 1;
+out_unmap:
+	munmap(data, sz);
+out:
+	unmount_partition(vol_bootloader);
+	if (success) {
+		fastboot_okay("");
+		pr_info("Booting into supplied image...\n");
+		android_reboot(ANDROID_RB_RESTART, 0, 0);
+		pr_error("Reboot failed\n");
+	}
 }
 
 static void cmd_reboot(char *arg, int *fd, unsigned sz)

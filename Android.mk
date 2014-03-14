@@ -22,6 +22,7 @@ LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTR
 LOCAL_C_INCLUDES += external/zlib \
 		    external/libpng \
 		    bootable/userfastboot/microui \
+		    bootable/recovery \
 		    system/core/libsparse \
 		    system/core/fs_mgr/include \
 		    system/core/libsparse/include \

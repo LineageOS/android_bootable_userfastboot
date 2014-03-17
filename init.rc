@@ -16,6 +16,9 @@ on init
     mount tmpfs tmpfs /tmp
     chmod 1777 /tmp
 
+    # Erasing partitions can take a long time, don't whine about it
+    write /proc/sys/kernel/hung_task_timeout_secs 0
+
     # USB Gadget initialization
     write /sys/class/android_usb/android0/enable 0
     write /sys/class/android_usb/android0/iManufacturer Intel

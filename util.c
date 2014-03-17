@@ -345,18 +345,23 @@ int unmount_partition(struct fstab_rec *vol)
 	return ret;
 }
 
+
 int erase_partition(struct fstab_rec *vol)
 {
-	int fd;
+	uint64_t range[2];
 	uint64_t disk_size;
+	int fd;
+	int ret;
 	char zeroes[4096];
 
 	if (!is_valid_blkdev(vol->blk_device)) {
 		pr_error("invalid destination node. partition disks?\n");
 		return -1;
 	}
-
 	get_volume_size(vol, &disk_size);
+
+	range[0] = 0;
+	range[1] = disk_size;
 
 	fd = open(vol->blk_device, O_WRONLY);
 	if (fd < 0) {
@@ -364,6 +369,25 @@ int erase_partition(struct fstab_rec *vol)
 		return -1;
 	}
 
+	ret = ioctl(fd, BLKSECDISCARD, &range);
+	if (ret >= 0) {
+		pr_info("Wiped %s with BLKSECDISCARD\n", vol->blk_device);
+		close(fd);
+		return 0;
+	}
+
+	range[0] = 0;
+	range[1] = disk_size;
+
+	ret = ioctl(fd, BLKDISCARD, &range);
+	if (ret >= 0) {
+		pr_info("Wiped %s with BLKDISCARD\n", vol->blk_device);
+		close(fd);
+		return 0;
+	}
+
+	pr_info("Zeroing out %s as BLK*DISCARD ioctls not supported, this may take a while...\n",
+			vol->blk_device);
 	memset(zeroes, 0, sizeof(zeroes));
 	while (disk_size) {
 		ssize_t ret;
@@ -376,10 +400,10 @@ int erase_partition(struct fstab_rec *vol)
 		}
 		disk_size -= ret;
 	}
-
 	close(fd);
 	return 0;
 }
+
 
 int execute_command(const char *fmt, ...)
 {

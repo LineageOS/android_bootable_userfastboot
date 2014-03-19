@@ -86,7 +86,12 @@ static void publish_part_data(struct fstab_rec *v)
 	char *buf;
 	char *buf2;
 	uint64_t size;
+	struct stat sb;
 	char *name = v->mount_point + 1;
+
+	/* Skip if not mapped to a real device node */
+	if (stat(v->blk_device, &sb))
+		return;
 
 	if (asprintf(&buf, "partition-type:%s", name) < 0) {
 		pr_error("out of memory\n");

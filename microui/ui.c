@@ -79,11 +79,10 @@ static double gProgressScopeTime, gProgressScopeDuration;
 // Set to 1 when both graphics pages are the same (except for the progress bar)
 static int gPagesIdentical = 0;
 
-// Log text overlay, displayed when a magic key is pressed
 static char text[MAX_ROWS][MAX_COLS];
 static int text_cols = 0, text_rows = 0;
 static int text_col = 0, text_row = 0, text_top = 0;
-static int show_text = 0;
+static int show_text = 1;
 static pthread_mutex_t gTextMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static char menu[MAX_ROWS][MAX_COLS];

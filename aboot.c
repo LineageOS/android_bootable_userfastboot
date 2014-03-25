@@ -59,6 +59,7 @@
 #include "userfastboot_util.h"
 #include "userfastboot_plugin.h"
 #include "userfastboot_ui.h"
+#include "gpt.h"
 
 #define CMD_SYSTEM		"system"
 #define CMD_SHOWTEXT		"showtext"
@@ -507,5 +508,10 @@ void aboot_register_commands(void)
 	}
 	publish_all_part_data();
 	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
+	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
 	aboot_register_oem_cmd("adbd", start_adbd);
 }
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
+

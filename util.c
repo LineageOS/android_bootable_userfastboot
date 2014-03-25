@@ -564,3 +564,33 @@ void import_kernel_cmdline(void (*callback)(char *name))
 	}
 }
 
+int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
+			int index, void *context), void *context)
+{
+	char *saveptr, *entry, *str;
+	int idx = 0;
+	char *list;
+	int ret = 0;
+
+	if (!stringlist)
+		return -1;
+
+	list = xstrdup(stringlist);
+	for (str = list; ; str = NULL) {
+		entry = strtok_r(str, " \t", &saveptr);
+		if (!entry)
+			break;
+		if (!cb(entry, idx++, context)) {
+			ret = -1;
+			break;
+		}
+	}
+out:
+	free(list);
+	return ret;
+}
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
+
+

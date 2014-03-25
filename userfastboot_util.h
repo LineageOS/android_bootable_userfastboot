@@ -1,6 +1,8 @@
 #ifndef USERFASTBOOT_UTIL_H
 #define USERFASTBOOT_UTIL_H
 
+#include <stdbool.h>
+
 #include <diskconfig/diskconfig.h>
 #include "userfastboot_fstab.h"
 
@@ -36,5 +38,8 @@ int erase_partition(struct fstab_rec *vol);
 int check_ext_superblock(struct fstab_rec *vol, int *sb_present);
 int unmount_partition(struct fstab_rec *vol);
 int get_volume_size(struct fstab_rec *vol, uint64_t *sz);
+
+int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
+			int index, void *context), void *context);
 
 #endif

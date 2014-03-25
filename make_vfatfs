@@ -1,0 +1,40 @@
+#!/bin/bash
+
+set -e
+
+# Some distributions put tools like mkdosfs in sbin, which isn't
+# always in the default PATH
+PATH="${PATH}:/sbin:/usr/sbin"
+
+IN_DIR=$1
+OUT_FILE=$2
+
+# check for mkdosfs,mcopy in PATH
+for i in mkdosfs mcopy; do
+    if ! which "$i" &> /dev/null; then
+        echo "Missing required program $i"
+        exit 1
+    fi
+done
+
+rm -f $OUT_FILE
+img_size=`du -sk $IN_DIR | tail -n1 | awk '{print $1;}'`
+
+# add 1% extra space, minimum 512K
+extra=$(($img_size / 100))
+img_size=$(($img_size + $extra))
+# Round the size of the disk up to 32K so that total sectors is
+# a multiple of sectors per track (mtools complains otherwise)
+mod=$((img_size % 32))
+if [ $mod != 0 ]; then
+    img_size=$(($img_size + 32 - $mod))
+fi
+
+echo "Create FAT filesystem of size $img_size"
+mkdosfs -n ANDROIDIA -C $OUT_FILE $img_size
+
+for f in $IN_DIR/*; do
+    echo "Copying $f"
+    mcopy -s -Q -i $OUT_FILE $f ::$(basename $f)
+done
+

@@ -33,14 +33,14 @@
 	mui_show_text(1); \
 	} while (0)
 #define pr_warning(...)		mui_print("W: " __VA_ARGS__)
-#define pr_info(...)		mui_print("I: " __VA_ARGS__)
+#define pr_info(...)		mui_print(__VA_ARGS__)
 #if VERBOSE_DEBUG
 /* Serial console only */
 #define pr_verbose(...)		printf("V: " __VA_ARGS__)
 #else
 #define pr_verbose(...)		do { } while (0)
 #endif
-#define pr_debug(...)		mui_print("D: " __VA_ARGS__)
+#define pr_debug(...)		printf("D: " __VA_ARGS__)
 
 
 #endif

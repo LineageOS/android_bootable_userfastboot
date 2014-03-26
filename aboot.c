@@ -158,8 +158,6 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
 {
 	struct fstab_rec *vol;
 
-	pr_info("%s: %s\n", __func__, part_name);
-
 	vol = volume_for_name(part_name);
 	if (vol == NULL) {
 		fastboot_fail("unknown partition name");
@@ -299,7 +297,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out_map;
 	}
-	pr_debug("Writing %u bytes to %s at offset: %jd\n",
+	pr_info("Writing %u bytes to %s at offset: %jd\n",
 				sz, vol->blk_device, (intmax_t)offset);
 
 	if (sz >= sizeof(magic))
@@ -309,7 +307,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		/* If there is enough data to hold the header,
 		 * and MAGIC appears in header,
 		 * then it is a sparse ext4 image */
-		pr_info("Detected sparse header\n");
+		pr_debug("Detected sparse header\n");
 		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
 		ret = named_file_write(vol->blk_device, data, sz, offset, 0);

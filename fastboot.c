@@ -229,7 +229,7 @@ void fastboot_fail(const char *reason)
 
 void fastboot_okay(const char *info)
 {
-	pr_debug("ack OKAY %s\n", info);
+	pr_info("ack OKAY %s\n", info);
 	fastboot_ack("OKAY", info);
 }
 
@@ -292,7 +292,7 @@ again:
 		if (r < 0)
 			break;
 		buffer[r] = 0;
-		pr_debug("fastboot got command: %s\n", buffer);
+		pr_info("fastboot got command: %s\n", buffer);
 
 		for (cmd = cmdlist; cmd; cmd = cmd->next) {
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))

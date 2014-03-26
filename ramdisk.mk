@@ -14,6 +14,7 @@ userfastboot_modules := \
 	libstdc++ \
 	libselinux \
 	linker \
+	linker64 \
 	sh \
 	toolbox \
 	libext2fs \

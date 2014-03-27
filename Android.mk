@@ -18,12 +18,14 @@ LOCAL_MODULE := userfastboot
 LOCAL_MODULE_TAGS := eng
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
 LOCAL_STATIC_LIBRARIES += libsparse_static libmicroui libpng libpixelflinger_static \
-			  libselinux libfs_mgr libenc libstdc++ libiniparser libgpt_static
+			  libselinux libfs_mgr libenc libstdc++ libiniparser libgpt_static \
+			  libefivar
 
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
 LOCAL_C_INCLUDES += external/zlib \
 		    external/libpng \
 		    external/iniparser/src \
+		    external/efivar/src \
 		    bootable/userfastboot/microui \
 		    bootable/iago/include \
 		    bootable/recovery \

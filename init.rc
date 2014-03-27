@@ -28,6 +28,9 @@ on init
     write /sys/class/android_usb/android0/idProduct 0829
     write /sys/class/android_usb/android0/enable 1
 
+on fs
+    mount efivarfs none /sys/firmware/efi/efivars
+
 on boot
     ifup lo
     hostname localhost

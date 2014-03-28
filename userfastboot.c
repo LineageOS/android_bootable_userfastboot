@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 	mui_init();
 #endif
 
-	pr_info(" -- UserFastBoot %s for %s --\n", USERFASTBOOT_VERSION, DEVICE_NAME);
+	pr_uiinfo("-- UserFastBoot %s for %s --", USERFASTBOOT_VERSION, DEVICE_NAME);
 
 	mui_set_background(BACKGROUND_ICON_INSTALLING);
 

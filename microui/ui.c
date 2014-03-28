@@ -33,7 +33,7 @@
 
 
 #define MAX_COLS 96
-#define MAX_ROWS 32
+#define MAX_ROWS 64
 
 #define CHAR_WIDTH 10
 #define CHAR_HEIGHT 18
@@ -80,9 +80,13 @@ static double gProgressScopeTime, gProgressScopeDuration;
 static int gPagesIdentical = 0;
 
 static char text[MAX_ROWS][MAX_COLS];
+static char status[MAX_COLS];
+static char infotext[MAX_ROWS][MAX_COLS];
+static int info_row = 0;
+static int status_modified = 0;
 static int text_cols = 0, text_rows = 0;
 static int text_col = 0, text_row = 0, text_top = 0;
-static int show_text = 1;
+static int show_text = 0;
 static pthread_mutex_t gTextMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static char menu[MAX_ROWS][MAX_COLS];
@@ -115,9 +119,19 @@ static void draw_install_overlay_locked(int frame) {
 // Should only be called with gUpdateMutex locked.
 static void draw_background_locked(int icon)
 {
+    int i;
     gPagesIdentical = 0;
     gr_color(0, 0, 0, 255);
     gr_fill(0, 0, gr_fb_width(), gr_fb_height());
+    status_modified = 1;
+
+    if (!show_text) {
+        gr_color(255, 0, 0, 255);
+        pthread_mutex_lock(&gTextMutex);
+        for (i = 0; i <= info_row; i++)
+            gr_text(0, CHAR_HEIGHT * (i + 1), infotext[i]);
+        pthread_mutex_unlock(&gTextMutex);
+    }
 
     if (icon) {
         gr_surface surface = gBackgroundIcon[icon];
@@ -132,10 +146,41 @@ static void draw_background_locked(int icon)
     }
 }
 
+static void draw_status_locked()
+{
+    int iconHeight = gr_get_height(gBackgroundIcon[BACKGROUND_ICON_INSTALLING]);
+    int height = gr_get_height(gProgressBarEmpty);
+    int fontx, fonty;
+
+    if (show_text)
+        return;
+
+    pthread_mutex_lock(&gTextMutex);
+
+    if (status_modified) {
+        int textwidth = gr_measure(status);
+        int dx = (gr_fb_width() - textwidth)/2;
+        /* We want the text just below the progress bar */
+        int dy = CHAR_HEIGHT + height + (3 * gr_fb_height() + iconHeight) / 4;
+
+        /* Clear any old text in the area */
+        gr_color(0, 0, 0, 255);
+        gr_fill(0, dy - CHAR_HEIGHT, gr_fb_width(), dy + CHAR_HEIGHT);
+
+        gr_color(255, 255, 0, 255);
+        gr_text(dx, dy, status);
+        status_modified = 0;
+    }
+
+    pthread_mutex_unlock(&gTextMutex);
+}
+
 // Draw the progress bar (if any) on the screen.  Does not flip pages.
 // Should only be called with gUpdateMutex locked.
 static void draw_progress_locked()
 {
+    draw_status_locked();
+
     if (gCurrentIcon == BACKGROUND_ICON_INSTALLING) {
         draw_install_overlay_locked(gInstallingFrame);
     }
@@ -237,6 +282,12 @@ static void update_progress_locked(void)
     } else {
         draw_progress_locked();  // Draw only the progress bar and overlays
     }
+    gr_flip();
+}
+
+static void update_status_locked(void)
+{
+    draw_status_locked();
     gr_flip();
 }
 
@@ -422,6 +473,60 @@ void mui_reset_progress()
     gProgressScopeStart = gProgressScopeSize = 0;
     gProgressScopeTime = gProgressScopeDuration = 0;
     gProgress = 0;
+    update_screen_locked();
+    pthread_mutex_unlock(&gUpdateMutex);
+}
+
+void mui_status(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, 256, fmt, ap);
+    va_end(ap);
+
+    mui_print("%s", buf);
+
+    if (!gInit)
+        return;
+
+    // This can get called before ui_init(), so be careful.
+    pthread_mutex_lock(&gTextMutex);
+    strncpy(status, buf, sizeof(status));
+    status[sizeof(status) - 1] = '\0';
+    status_modified = 1;
+    pthread_mutex_unlock(&gTextMutex);
+
+    if (!show_text) {
+        pthread_mutex_lock(&gUpdateMutex);
+        update_status_locked();
+        pthread_mutex_unlock(&gUpdateMutex);
+    }
+}
+
+void mui_infotext(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, 256, fmt, ap);
+    va_end(ap);
+
+    mui_print("%s", buf);
+
+    if (!gInit)
+        return;
+
+    // This can get called before ui_init(), so be careful.
+    pthread_mutex_lock(&gTextMutex);
+    if (info_row < MAX_ROWS) {
+	strncpy(infotext[info_row], buf, MAX_COLS);
+	infotext[info_row][MAX_COLS - 1] = '\0';
+	info_row++;
+    }
+    pthread_mutex_unlock(&gTextMutex);
+
+    pthread_mutex_lock(&gUpdateMutex);
     update_screen_locked();
     pthread_mutex_unlock(&gUpdateMutex);
 }

@@ -81,6 +81,8 @@ void mui_init();
 // The screen is small, and users may need to report these messages to support,
 // so keep the output short and not too cryptic.
 void mui_print(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+void mui_status(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+void mui_infotext(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 // Set the icon (normally the only thing visible besides the progress bar).
 enum {

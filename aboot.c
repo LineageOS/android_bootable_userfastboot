@@ -224,7 +224,7 @@ static int set_loader_lock(bool state)
 		if (is_valid_blkdev(vol->blk_device)) {
 			/* TODO Inform the user that a data wipe is required and
 			 * get UI confirmation that they are OK with it */
-			pr_info("Erasing /data required, this can take a LONG time...\n");
+			pr_status("Userdata erase required, this can take a while...\n");
 			if (erase_partition(vol)) {
 				pr_error("couldn't erase data partition\n");
 				return -1;
@@ -357,7 +357,7 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
 		return;
 	}
 
-	pr_info("Erasing %s...this may take a LONG time...\n", part_name);
+	pr_status("Erasing %s, this can take a while...\n", part_name);
 	if (erase_partition(vol))
 		fastboot_fail("Can't erase partition");
 	else
@@ -442,6 +442,8 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 
 	process_target(targetspec, &tgt);
 	pr_verbose("data size %u\n", sz);
+
+	pr_status("Flashing %s", targetspec);
 
 	if ( (cb = hashmapGet(flash_cmds, tgt.name)) ) {
 		/* Use our table of flash functions registered by platform
@@ -623,6 +625,8 @@ static void cmd_boot(char *arg, int *fd, unsigned sz)
 	int success = 0;
 	void *data;
 
+	pr_status("Preparing boot image");
+
 	vol_bootloader = volume_for_name("bootloader");
 	if (vol_bootloader == NULL) {
 		fastboot_fail("can't find bootloader partition");
@@ -699,6 +703,7 @@ static void publish_from_prop(char *key, char *prop, char *dfl)
 		char *valcpy = strdup(val);
 		if (valcpy) {
 			fastboot_publish(key, valcpy);
+			pr_uiinfo("%s: %s", key, valcpy);
 		}
 	}
 }
@@ -739,8 +744,9 @@ void aboot_register_commands(void)
 	if (!is_loader_locked()) {
 		register_unlocked_commands();
 		fastboot_publish("locked", "0");
+		pr_uiinfo("Fastboot is UNLOCKED\n");
 	} else {
-		pr_info("Fastboot is LOCKED, please use 'fastboot oem unlock'\n");
+		pr_uiinfo("Fastboot is LOCKED, please use 'fastboot oem unlock'\n");
 		fastboot_publish("locked", "1");
 	}
 }

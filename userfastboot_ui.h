@@ -41,6 +41,6 @@
 #define pr_verbose(...)		do { } while (0)
 #endif
 #define pr_debug(...)		printf("D: " __VA_ARGS__)
-
-
+#define pr_status(...)		mui_status(__VA_ARGS__)
+#define pr_uiinfo(...)		mui_infotext(__VA_ARGS__)
 #endif

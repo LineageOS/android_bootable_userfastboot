@@ -183,7 +183,10 @@ static int usb_read_to_file(int fd, unsigned int len)
 	char buf[XFER_MEM_SIZE];
 	int r = 0;
 	int count = 0;
+	unsigned int orig_len = len;
+
 	lseek64(fd, 0, SEEK_SET);
+	mui_show_progress(1.0, 0);
 	while (len > 0)
 	{
 		unsigned int size = (len > XFER_MEM_SIZE) ? XFER_MEM_SIZE : len;
@@ -199,6 +202,7 @@ static int usb_read_to_file(int fd, unsigned int len)
 		}
 		len -= size;
 		count += size;
+		mui_set_progress((float)count / (float)orig_len);
 	}
 
 	return count;
@@ -255,6 +259,7 @@ static void cmd_download(char *arg, int *fd, unsigned sz)
 
 	len = strtoul(arg, NULL, 16);
 	pr_debug("fastboot: cmd_download %d bytes\n", len);
+	pr_status("Receiving %d bytes", len);
 
 	download_size = 0;
 
@@ -396,6 +401,8 @@ static int fastboot_handler(void *arg)
 	fds[tcp_fd_idx].fd = -1;
 
 	for (;;) {
+		pr_status("Awaiting commands");
+
 		if (fds[usb_fd_idx].fd == -1)
 			fds[usb_fd_idx].fd = open_usb();
 		if (fds[tcp_fd_idx].fd == -1)

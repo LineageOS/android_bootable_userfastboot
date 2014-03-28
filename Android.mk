@@ -27,6 +27,7 @@ LOCAL_C_INCLUDES += external/zlib \
 		    external/iniparser/src \
 		    external/efivar/src \
 		    bootable/userfastboot/microui \
+		    bootable/userfastboot/libgpt/include \
 		    bootable/iago/include \
 		    bootable/recovery \
 		    system/core/libsparse \
@@ -80,5 +81,6 @@ include $(BUILD_EXECUTABLE)
 
 endif # TARGET_USE_USERFASTBOOT
 
-include $(LOCAL_PATH)/microui/Android.mk
+include bootable/userfastboot/microui/Android.mk
+include bootable/userfastboot/libgpt/Android.mk
 

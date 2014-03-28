@@ -93,6 +93,9 @@ int gpt_sync_ptable(const char *device);
 /* Return a string representation of a GUID. Must be freed */
 char *gpt_guid_to_string(struct guid *g);
 
+/* Populate a GUID based on some string value. Return -1 on failure */
+int gpt_string_to_guid(struct guid *g, const char *s);
+
 /* Return the first index in the partition table that doesn't have an
  * actual partition entry. */
 uint32_t gpt_next_index(struct gpt *gpt);

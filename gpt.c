@@ -186,13 +186,15 @@ static bool sumsizes_cb(char *entry, int index _unused, void *data)
 	return true;
 }
 
-static bool create_ptn_cb(char *entry, int index _unused, void *data)
+static bool create_ptn_cb(char *entry, int i _unused, void *data)
 {
 	struct flash_gpt_context *ctx;
 	int64_t len;
 	uint64_t flags;
-	char *label, *type, *flagstr;
+	char *label, *type, *flagstr, *guidstr;
+	struct gpt_entry *ge;
 	int type_code;
+	uint32_t index;
 
 	ctx = (struct flash_gpt_context *)data;
 	label = get_pdata(entry, "label", ctx->config);
@@ -226,11 +228,31 @@ static bool create_ptn_cb(char *entry, int index _unused, void *data)
 
 	pr_debug("Create partition %s at MiB %" PRIu64 " to %" PRIu64"", entry,
 			ctx->next_mb, ctx->next_mb + len);
-	if (!gpt_entry_create(ctx->gpt, label, type_code, flags,
+	index = gpt_entry_create(ctx->gpt, label, type_code, flags,
 				mib_to_lba(ctx->gpt, ctx->next_mb),
-				mib_to_lba(ctx->gpt, ctx->next_mb + len) - 1)) {
+				mib_to_lba(ctx->gpt, ctx->next_mb + len) - 1);
+	if (!index) {
 		pr_error("Couldn't create partition %s", entry);
 		return false;
+	}
+
+	/* Here we abuse the GPT spec a little. In the bootloader, the EFI
+	 * BIOS only has functions to look up partitions by the supposedly
+	 * unique part_guid, with no way to look up by name or type guid.
+	 * Instead of writing a whole bunch of GPT parsing code in the loader,
+	 * just used fixed values for the part_guid if specified in the config
+	 * file we passed in */
+	guidstr = get_pdata(entry, "guid", ctx->config);
+	if (guidstr) {
+		ge = gpt_entry_get(index, ctx->gpt);
+		if (!ge) {
+			pr_error("Internal error creating GPT\n");
+			return false;
+		}
+		if (gpt_string_to_guid(&ge->part_guid, guidstr)) {
+			pr_error("GUID '%s' is malformed\n", guidstr);
+			return false;
+		}
 	}
 	ctx->next_mb += len;
 	return true;

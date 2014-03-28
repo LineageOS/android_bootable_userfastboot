@@ -273,6 +273,19 @@ char *gpt_guid_to_string(struct guid *g)
 	return ret;
 }
 
+
+int gpt_string_to_guid(struct guid *g, const char *s)
+{
+	int ret;
+
+	ret = sscanf(s, "%08x-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx",
+			&g->data1, &g->data2, &g->data3,
+			&g->data4[0], &g->data4[1], &g->data4[2], &g->data4[3],
+			&g->data4[4], &g->data4[5], &g->data4[6], &g->data4[7]);
+	return !(ret == 11);
+}
+
+
 /* re-factor gpt_entry_get, use when bounds-checking provided */
 struct gpt_entry *gpt_entry_offset(uint32_t entry_index, struct gpt *gpt)
 {
@@ -1099,4 +1112,7 @@ void gpt_entry_set_type(struct gpt_entry *e, enum part_type type)
 {
 	memcpy(&e->type_guid, get_guid_type(type), sizeof(struct guid));
 }
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
 

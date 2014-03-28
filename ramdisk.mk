@@ -108,6 +108,18 @@ endif
 USERFASTBOOT_CMDLINE := g_android.fastboot=1
 USERFASTBOOT_CMDLINE += $(BOARD_KERNEL_CMDLINE)
 
+$(ufb_out)/ufb-cmdline:
+	$(hide) mkdir -p $(dir $@)
+	$(hide) echo $(USERFASTBOOT_CMDLINE) > $@
+
+$(ufb_out)/ufb-ramdisk.zip: \
+		$(USERFASTBOOT_RAMDISK) \
+
+	$(hide) mkdir -p $(dir $@)
+	$(hide) (cd $(USERFASTBOOT_ROOT_OUT) && zip -qry ../$(notdir $@) .)
+
+INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-ramdisk.zip $(ufb_out)/ufb-cmdline
+
 # Create a standard Android bootimage using the regular kernel and the
 # userfastboot ramdisk.
 $(USERFASTBOOT_BOOTIMAGE): \

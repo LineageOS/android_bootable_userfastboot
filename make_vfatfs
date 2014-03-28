@@ -2,6 +2,16 @@
 
 set -e
 
+img_size=
+
+while getopts s: name; do
+	case $name in
+		s) img_size=$(($OPTARG / 1024))
+		;;
+	esac
+done
+shift $(($OPTIND - 1))
+
 # Some distributions put tools like mkdosfs in sbin, which isn't
 # always in the default PATH
 PATH="${PATH}:/sbin:/usr/sbin"
@@ -18,11 +28,16 @@ for i in mkdosfs mcopy; do
 done
 
 rm -f $OUT_FILE
-img_size=`du -sk $IN_DIR | tail -n1 | awk '{print $1;}'`
 
-# add 1% extra space, minimum 512K
-extra=$(($img_size / 100))
-img_size=$(($img_size + $extra))
+if [ -z "$img_size" ]; then
+
+	img_size=`du -sk $IN_DIR | tail -n1 | awk '{print $1;}'`
+
+	# add 1% extra space, minimum 512K
+	extra=$(($img_size / 100))
+	img_size=$(($img_size + $extra))
+fi
+
 # Round the size of the disk up to 32K so that total sectors is
 # a multiple of sectors per track (mtools complains otherwise)
 mod=$((img_size % 32))

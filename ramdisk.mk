@@ -16,6 +16,7 @@ ufb_modules := \
 	linker \
 	linker64 \
 	sh \
+	su \
 	toolbox \
 	libext2fs \
 	libext2_com_err \

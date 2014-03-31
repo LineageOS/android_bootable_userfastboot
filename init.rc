@@ -3,6 +3,7 @@ import /init.recovery.${ro.hardware}.rc
 import /init.recovery.composite.rc
 
 on early-init
+    loglevel 7
     start ueventd
 
 on init
@@ -41,13 +42,16 @@ service ueventd /sbin/ueventd
     critical
 
 service userfastboot /system/bin/userfastboot
-    console
     oneshot
 
 service console /system/bin/sh
+    class core
     console
     disabled
+    user shell
+    group log
+    seclabel u:r:shell:s0
 
-on property:init.svc.userfastboot=stopped
+on property:ro.debuggable=1
     start console
 

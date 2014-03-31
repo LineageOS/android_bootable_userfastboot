@@ -259,7 +259,7 @@ static void cmd_download(char *arg, int *fd, unsigned sz)
 
 	len = strtoul(arg, NULL, 16);
 	pr_debug("fastboot: cmd_download %d bytes\n", len);
-	pr_status("Receiving %d bytes", len);
+	pr_status("Receiving %d bytes\n", len);
 
 	download_size = 0;
 
@@ -307,7 +307,8 @@ again:
 
 			fd = open(FASTBOOT_DOWNLOAD_TMP_FILE, O_RDWR | O_CREAT, 0600);
 			if (fd < 0){
-				pr_error("fastboot: command_loop cannot open the temp file errno:%d", errno);
+				pr_error("fastboot: command_loop cannot open the temp file: %s\n",
+						strerror(errno));
 				fastboot_fail("fastboot failed");
 			}
 
@@ -401,7 +402,7 @@ static int fastboot_handler(void *arg)
 	fds[tcp_fd_idx].fd = -1;
 
 	for (;;) {
-		pr_status("Awaiting commands");
+		pr_status("Awaiting commands\n");
 
 		if (fds[usb_fd_idx].fd == -1)
 			fds[usb_fd_idx].fd = open_usb();

@@ -112,7 +112,7 @@ static bool flags_cb(char *flag, int _unused index, void *context)
 	else if (!strcmp(flag, "noauto"))
 		mask = GPT_FLAG_NO_AUTOMOUNT;
 	else {
-		pr_error("unknown partition flag '%s'", flag);
+		pr_error("unknown partition flag '%s'\n", flag);
                 return false;
         }
 
@@ -168,7 +168,7 @@ static bool sumsizes_cb(char *entry, int index _unused, void *data)
 
 	lenstr = get_pdata(entry, "len", ctx->config);
 	if (!lenstr) {
-		pr_error("Partition %s doesn't specify len", entry);
+		pr_error("Partition %s doesn't specify len\n", entry);
 		return false;
 	}
 
@@ -177,7 +177,7 @@ static bool sumsizes_cb(char *entry, int index _unused, void *data)
 		ctx->size_mb += len;
 	} else {
 		if (ctx->found) {
-			pr_error("More than one partition with size -1 specified!");
+			pr_error("More than one partition with size -1 specified!\n");
 			return false;
 		} else {
 			ctx->found = true;
@@ -199,21 +199,21 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 	ctx = (struct flash_gpt_context *)data;
 	label = get_pdata(entry, "label", ctx->config);
 	if (!label) {
-		pr_error("No label specified for partition %s", entry);
+		pr_error("No label specified for partition %s\n", entry);
 		return false;
 	}
 	if (strlen(label) > 36) {
-		pr_error("Label %s is too long for GPT", label);
+		pr_error("Label %s is too long for GPT\n", label);
 		return false;
 	}
 	type = get_pdata(entry, "type", ctx->config);
 	if (!type) {
-		pr_error("no type specified for partition %s", entry);
+		pr_error("no type specified for partition %s\n", entry);
 		return false;
 	}
 	type_code = string_to_type(type);
 	if (type_code < 0) {
-		pr_error("unknown partition type %s", type);
+		pr_error("unknown partition type %s\n", type);
 		return false;
 	}
 	/* sumsizes_cb ensures that this value has been populated */
@@ -226,13 +226,13 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 	if (flagstr)
 		string_list_iterate(flagstr, flags_cb, &flags);
 
-	pr_debug("Create partition %s at MiB %" PRIu64 " to %" PRIu64"", entry,
+	pr_verbose("Create partition %s at MiB %" PRIu64 " to %" PRIu64"\n", entry,
 			ctx->next_mb, ctx->next_mb + len);
 	index = gpt_entry_create(ctx->gpt, label, type_code, flags,
 				mib_to_lba(ctx->gpt, ctx->next_mb),
 				mib_to_lba(ctx->gpt, ctx->next_mb + len) - 1);
 	if (!index) {
-		pr_error("Couldn't create partition %s", entry);
+		pr_error("Couldn't create partition %s\n", entry);
 		return false;
 	}
 
@@ -263,42 +263,42 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 {
 	int ret = -1;
-	char *device, *plist, *str, *saveptr;
+	char *device, *plist, *str, *saveptr, *buf;
 	struct flash_gpt_context ctx;
 	uint64_t start_lba, end_lba, start_mb, end_mb;
 	uint64_t space_available_mb;
 
 	ctx.config = iniparser_load(FASTBOOT_DOWNLOAD_TMP_FILE);
 	if (!ctx.config) {
-		pr_error("Couldn't parse GPT config");
+		pr_error("Couldn't parse GPT config\n");
 		return -1;
 	}
 
 	device = iniparser_getstring(ctx.config, "base:device", NULL);
 	if (!device) {
-		pr_error("Configuration doesn't specify a device");
+		pr_error("Configuration doesn't specify a device\n");
 		goto out;
 	}
 
 	plist = iniparser_getstring(ctx.config, "base:partitions", NULL);
 	if (!plist) {
-		pr_error("Configuration doesn't have a partition list");
+		pr_error("Configuration doesn't have a partition list\n");
 		goto out;
 	}
 
 	ctx.gpt = gpt_init(device);
 	if (!ctx.gpt) {
-		pr_error("Couldn't init gpt for %s", device);
+		pr_error("Couldn't init gpt for %s\n", device);
 		goto out;
 	}
 
 	if (gpt_new(ctx.gpt)) {
-		pr_error("Couldn't initialize empty GPT");
+		pr_error("Couldn't initialize empty GPT\n");
 		goto out_free_gpt;
 	}
 
 	pr_info("Disk %s has %" PRIu64" %d-byte sectors for a total capacity of %"
-			PRIu64 " MiB", device, ctx.gpt->sectors, ctx.gpt->lba_size,
+			PRIu64 " MiB\n", device, ctx.gpt->sectors, ctx.gpt->lba_size,
 			to_mib_floor(ctx.gpt->sectors * ctx.gpt->lba_size));
 
 	/* Find out the total size of the partitions specified, so that
@@ -307,7 +307,7 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 	ctx.size_mb = 0;
 	ctx.found = false;
 	if (string_list_iterate(plist, sumsizes_cb, &ctx)) {
-		pr_error("Couldn't sum up partition sizes");
+		pr_error("Couldn't sum up partition sizes\n");
 		goto out_free_gpt;
 	}
 
@@ -316,26 +316,45 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 	end_mb = to_mib_floor((end_lba + 1) * ctx.gpt->lba_size);
 	space_available_mb = end_mb - start_mb;
 	if (space_available_mb < (ctx.size_mb + MIN_DATA_PART_SIZE)) {
-		pr_error("insufficient disk space");
+		pr_error("insufficient disk space\n");
 		goto out_free_gpt;
 	}
 	ctx.expand_mb = space_available_mb - ctx.size_mb;
 	if (ctx.expand_mb && !ctx.found)
-		pr_warning("Disk has %" PRIu64 " MiB of unused space!", ctx.expand_mb);
+		pr_warning("Disk has %" PRIu64 " MiB of unused space!\n", ctx.expand_mb);
 
 	ctx.next_mb = start_mb;
 	if (string_list_iterate(plist, create_ptn_cb, &ctx)) {
-		pr_error("Failed to create partitions");
+		pr_error("Failed to create partitions\n");
 		goto out_free_gpt;
 	}
 
+	/* Dump GPT contents to log */
+	buf = gpt_dump_header(ctx.gpt);
+	if (buf) {
+		pr_debug("%s\n", buf);
+		free(buf);
+	}
+	buf = gpt_dump_pentries(ctx.gpt);
+	if (buf) {
+		char *buf2, *line;
+		for (buf2 = buf; ; buf2 = NULL) {
+			line = strtok(buf2, "\n");
+			if (!line)
+				break;
+			pr_debug("%s\n", line);
+		}
+		free(buf);
+	}
+
+
 	if (gpt_write(ctx.gpt)) {
-		pr_error("Couldn't commit new GPT to disk");
+		pr_error("Couldn't commit new GPT to disk\n");
 		goto out_free_gpt;
 	}
 
 	if (gpt_sync_ptable(ctx.gpt->device))
-		pr_warning("Couldn't re-read GPT, please reboot!");
+		pr_warning("Couldn't re-read GPT, please reboot!\n");
 	publish_all_part_data();
 
 	ret = 0;

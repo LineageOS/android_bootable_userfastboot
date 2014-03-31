@@ -295,7 +295,7 @@ static void process_target(char *targetspec, struct flash_target *tgt)
 
 	tgt->params = hashmapCreate(8, strhash, strcompare);
 	if (!tgt->params) {
-		pr_error("Memory allocation failure");
+		pr_error("Memory allocation failure\n");
 		die();
 	}
 
@@ -443,7 +443,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	process_target(targetspec, &tgt);
 	pr_verbose("data size %u\n", sz);
 
-	pr_status("Flashing %s", targetspec);
+	pr_status("Flashing %s\n", targetspec);
 
 	if ( (cb = hashmapGet(flash_cmds, tgt.name)) ) {
 		/* Use our table of flash functions registered by platform
@@ -559,7 +559,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 	if (strcmp(argv[0], CMD_UNLOCK) == 0) {
 		if (locked) {
 			if (set_loader_lock(false)) {
-				pr_error("Couldn't unlock!");
+				pr_error("Couldn't unlock!\n");
 				fastboot_fail("oem unlock");
 			} else {
 				fastboot_okay("");
@@ -571,7 +571,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 	}
 
 	if (locked) {
-		pr_error("device is locked, oem command %s not available", argv[0]);
+		pr_error("device is locked, oem command %s not available\n", argv[0]);
 		fastboot_fail(argv[0]);
 		goto out;
 	}
@@ -679,7 +679,7 @@ static void cmd_reboot(char *arg, int *fd, unsigned sz)
 	sync();
 	pr_info("Rebooting!\n");
 	android_reboot(ANDROID_RB_RESTART, 0, 0);
-	pr_error("Reboot failed");
+	pr_error("Reboot failed\n");
 }
 
 static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
@@ -688,7 +688,7 @@ static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
 	sync();
 	pr_info("Restarting UserFastBoot...\n");
 	android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
-	pr_error("Reboot failed");
+	pr_error("Reboot failed\n");
 }
 
 static int start_adbd(int argc, char **argv)

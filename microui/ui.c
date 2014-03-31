@@ -29,6 +29,8 @@
 #include <unistd.h>
 
 #include <cutils/android_reboot.h>
+#include <cutils/klog.h>
+
 #include "microui.h"
 
 
@@ -535,15 +537,11 @@ void mui_print(const char *fmt, ...)
 {
     char buf[256];
     va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, 256, fmt, ap);
-    va_end(ap);
+    int chars;
 
-    fputs(buf, stdout);
-    if (buf[strlen(buf) - 1] != '\n')
-        fputs("\n", stdout);
-    else
-        buf[strlen(buf) - 1] = '\0';
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
 
     if (!gInit)
         return;

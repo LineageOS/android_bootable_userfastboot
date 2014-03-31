@@ -70,12 +70,15 @@ int main(int argc, char **argv)
 	/* Files written only read/writable by root */
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
+	klog_init();
+	klog_set_level(KLOG_DEBUG_LEVEL);
+
 	/* initialize libmicroui */
 #ifdef USE_GUI
 	mui_init();
 #endif
 
-	pr_uiinfo("-- UserFastBoot %s for %s --", USERFASTBOOT_VERSION, DEVICE_NAME);
+	pr_uiinfo("-- UserFastBoot %s for %s --\n", USERFASTBOOT_VERSION, DEVICE_NAME);
 
 	mui_set_background(BACKGROUND_ICON_INSTALLING);
 
@@ -103,3 +106,7 @@ int main(int argc, char **argv)
 	/* Shouldn't get here */
 	exit(1);
 }
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
+

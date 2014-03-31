@@ -141,6 +141,7 @@ int named_file_write_ext4_sparse(const char *filename, const char *what)
 
 	pr_verbose("Destroying sparse data stucture\n");
 	sparse_file_destroy(s);
+	fsync(outfd);
 out:
 	if (infd >= 0)
 		close(infd);
@@ -197,6 +198,7 @@ int named_file_write(const char *filename, const unsigned char *what,
 		sz -= ret;
 		count += ret;
 	}
+	fsync(fd);
 	close(fd);
 	return 0;
 }
@@ -213,7 +215,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 
 	pr_debug("Mounting %s (%s) --> %s\n", device,
 			type, mountpoint);
-	ret = mount(device, mountpoint, type, MS_SYNCHRONOUS, "");
+	ret = mount(device, mountpoint, type, 0, "");
 	if (ret && errno != EBUSY) {
 		pr_debug("mount: %s", strerror(errno));
 		return -1;
@@ -394,6 +396,7 @@ int erase_partition(struct fstab_rec *vol)
 	ret = 0;
 out:
 	free(disk_name);
+	fsync(fd);
 	close(fd);
 	return ret;
 }

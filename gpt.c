@@ -157,6 +157,9 @@ struct flash_gpt_context {
 	uint64_t expand_mb;
 	uint64_t next_mb;
 	bool found;
+	int esp_index;
+	char *esp_title;
+	char *esp_loader;
 };
 
 
@@ -191,7 +194,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 	struct flash_gpt_context *ctx;
 	int64_t len;
 	uint64_t flags;
-	char *label, *type, *flagstr, *guidstr;
+	char *label, *type, *flagstr, *guidstr, *title, *efiboot;
 	struct gpt_entry *ge;
 	int type_code;
 	uint32_t index;
@@ -216,6 +219,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 		pr_error("unknown partition type %s\n", type);
 		return false;
 	}
+
 	/* sumsizes_cb ensures that this value has been populated */
 	len = atoll(get_pdata(entry, "len", ctx->config));
 	if (len < 0)
@@ -254,6 +258,24 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 			return false;
 		}
 	}
+
+	if (type_code == PART_ESP) {
+		if (ctx->esp_index) {
+			pr_error("Disk has multiple EFI System Partitions\n");
+			return false;
+		}
+		ctx->esp_loader = get_pdata(entry, "efi_loader", ctx->config);
+		if (ctx->esp_loader) {
+			ctx->esp_title = get_pdata(entry, "efi_title", ctx->config);
+			if (!ctx->esp_title) {
+				pr_error("efi_boot specified with no efi_title\n");
+				return false;
+			}
+			ctx->esp_index = index;
+			pr_debug("loader %s title %s index %d\n", ctx->esp_loader, ctx->esp_title, index);
+		}
+	}
+
 	ctx->next_mb += len;
 	return true;
 }
@@ -267,6 +289,8 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 	struct flash_gpt_context ctx;
 	uint64_t start_lba, end_lba, start_mb, end_mb;
 	uint64_t space_available_mb;
+
+	memset(&ctx, 0, sizeof(ctx));
 
 	ctx.config = iniparser_load(FASTBOOT_DOWNLOAD_TMP_FILE);
 	if (!ctx.config) {
@@ -357,6 +381,16 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 		pr_warning("Couldn't re-read GPT, please reboot!\n");
 	publish_all_part_data();
 
+	if (ctx.esp_index) {
+		ret = execute_command("/sbin/efibootmgr -c -d %s -l %s -v -p %d -D %s -L %s",
+				ctx.gpt->device, ctx.esp_loader, ctx.esp_index,
+				ctx.esp_title, ctx.esp_title);
+		if (ret) {
+			pr_warning("EFIBOOTMGR failed with exit status %d\n", ret);
+			goto out_free_gpt;
+		}
+	} else
+		pr_warning("Disk has no EFI system partition\n");
 	ret = 0;
 
 out_free_gpt:

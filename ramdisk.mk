@@ -36,6 +36,7 @@ ufb_modules := \
 	netcfg \
 	init.utilitynet.sh \
 	dhcpcd \
+	efibootmgr \
 
 ufb_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(ufb_modules)))
 
@@ -55,11 +56,14 @@ $(hide) $(foreach srcfile,$(ufb_system_files), \
 endef
 
 ufb_out := $(PRODUCT_OUT)/userfastboot
+ufb_bin := $(ufb_out)/userfastboot
 USERFASTBOOT_ROOT_OUT := $(ufb_out)/root
 ufb_data_out := $(USERFASTBOOT_ROOT_OUT)/data
 ufb_system_out := $(USERFASTBOOT_ROOT_OUT)/system
 ufb_etc_out := $(ufb_system_out)/etc
 ufb_initrc := $(ufb_src_dir)/init.rc
+
+efibootmgr := $(PRODUCT_OUT)/efi/efibootmgr
 
 USERFASTBOOT_RAMDISK := $(ufb_out)/ramdisk-fastboot.img.gz
 USERFASTBOOT_BOOTIMAGE := $(PRODUCT_OUT)/fastboot.img
@@ -76,6 +80,8 @@ endif
 $(USERFASTBOOT_RAMDISK): \
 		$(ufb_src_dir)/ramdisk.mk \
 		$(MKBOOTFS) \
+		$(ufb_bin) \
+		$(efibootmgr) \
 		$(INSTALLED_RAMDISK_TARGET) \
 		$(INSTALLED_SYSTEMIMAGE) \
 		$(MINIGZIP) \
@@ -88,6 +94,8 @@ $(USERFASTBOOT_RAMDISK): \
 	$(hide) rm -rf $(USERFASTBOOT_ROOT_OUT)
 	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)
 	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)/sbin
+	$(hide) $(ACP) -f $(ufb_bin) $(USERFASTBOOT_ROOT_OUT)/sbin/userfastboot
+	$(hide) $(ACP) -f $(efibootmgr) $(USERFASTBOOT_ROOT_OUT)/sbin/efibootmgr
 	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)/data
 	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)/mnt
 	$(hide) mkdir -p $(ufb_system_out)

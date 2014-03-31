@@ -41,7 +41,8 @@ on boot
 service ueventd /sbin/ueventd
     critical
 
-service userfastboot /system/bin/userfastboot
+service userfastboot /sbin/userfastboot
+    default
     oneshot
 
 service console /system/bin/sh

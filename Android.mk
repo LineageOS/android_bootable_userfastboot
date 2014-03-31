@@ -15,7 +15,9 @@ LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Werror
 
 LOCAL_MODULE := userfastboot
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/userfastboot
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
 LOCAL_STATIC_LIBRARIES += libsparse_static libmicroui libpng libpixelflinger_static \
 			  libselinux libfs_mgr libenc libstdc++ libiniparser libgpt_static \

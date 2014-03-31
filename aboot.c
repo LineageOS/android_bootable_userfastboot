@@ -525,7 +525,7 @@ out:
 	hashmapFree(tgt.params);
 	if (*fd >= 0){
 		close(*fd);
-		execute_command("rm %s", FASTBOOT_DOWNLOAD_TMP_FILE);
+		unlink(FASTBOOT_DOWNLOAD_TMP_FILE);
 	}
 }
 

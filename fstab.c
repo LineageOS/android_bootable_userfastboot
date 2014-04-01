@@ -74,6 +74,12 @@ struct fstab_rec *volume_for_name(const char *name)
 {
 	char *pat;
 	struct fstab_rec *vol;
+
+	/* Historical: it's /data in recovery.fstab, but some fastboot
+	 * options (such as -w) expect it to be called userdata */
+	if (!strcmp("userdata", name))
+		name = "data";
+
 	/* recovery.fstab entries are all prefixed with '/' */
 	pat = xasprintf("/%s", name);
 	vol = volume_for_path(pat);
@@ -81,13 +87,12 @@ struct fstab_rec *volume_for_name(const char *name)
 	return vol;
 }
 
-static void publish_part_data(struct fstab_rec *v)
+static void publish_part_data(struct fstab_rec *v, char *name)
 {
 	char *buf;
 	char *buf2;
 	uint64_t size;
 	struct stat sb;
-	char *name = v->mount_point + 1;
 
 	/* Skip if not mapped to a real device node */
 	if (stat(v->blk_device, &sb))
@@ -114,7 +119,12 @@ static void publish_part_data(struct fstab_rec *v)
 void publish_all_part_data(void)
 {
 	int i;
-	for (i = 0; i < fstab->num_entries; i++)
-		publish_part_data(&fstab->recs[i]);
+	for (i = 0; i < fstab->num_entries; i++) {
+		struct fstab_rec *v = &fstab->recs[i];
+		publish_part_data(v, v->mount_point + 1);
+		/* Historical */
+		if (!strcmp("/data", v->mount_point))
+			publish_part_data(v, "userdata");
+	}
 }
 

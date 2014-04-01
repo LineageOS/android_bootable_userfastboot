@@ -32,11 +32,9 @@ ufb_modules := \
 	tune2fs \
 	e2fsck \
 	gzip \
-	userfastboot \
 	netcfg \
 	init.utilitynet.sh \
 	dhcpcd \
-	efibootmgr \
 
 ufb_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(ufb_modules)))
 

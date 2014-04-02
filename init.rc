@@ -3,6 +3,7 @@ import /init.recovery.${ro.hardware}.rc
 import /init.recovery.composite.rc
 
 on early-init
+    loglevel 7
     start ueventd
 
 on init
@@ -28,6 +29,9 @@ on init
     write /sys/class/android_usb/android0/idProduct 0829
     write /sys/class/android_usb/android0/enable 1
 
+on fs
+    mount efivarfs none /sys/firmware/efi/efivars
+
 on boot
     ifup lo
     hostname localhost
@@ -37,14 +41,18 @@ on boot
 service ueventd /sbin/ueventd
     critical
 
-service userfastboot /system/bin/userfastboot
-    console
+service userfastboot /sbin/userfastboot
+    default
     oneshot
 
 service console /system/bin/sh
+    class core
     console
     disabled
+    user shell
+    group log
+    seclabel u:r:shell:s0
 
-on property:init.svc.userfastboot=stopped
+on property:ro.debuggable=1
     start console
 

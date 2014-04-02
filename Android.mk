@@ -9,19 +9,28 @@ LOCAL_SRC_FILES := \
 	util.c \
 	userfastboot.c \
 	fstab.c \
+	gpt.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Werror
 
 LOCAL_MODULE := userfastboot
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/userfastboot
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
 LOCAL_STATIC_LIBRARIES += libsparse_static libmicroui libpng libpixelflinger_static \
-			  libselinux libfs_mgr libenc libstdc++
+			  libselinux libfs_mgr libenc libstdc++ libiniparser libgpt_static \
+			  libefivar
+
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
 LOCAL_C_INCLUDES += external/zlib \
 		    external/libpng \
+		    external/iniparser/src \
+		    external/efivar/src \
 		    bootable/userfastboot/microui \
+		    bootable/userfastboot/libgpt/include \
+		    bootable/iago/include \
 		    bootable/recovery \
 		    system/core/libsparse \
 		    system/core/fs_mgr/include \
@@ -74,5 +83,6 @@ include $(BUILD_EXECUTABLE)
 
 endif # TARGET_USE_USERFASTBOOT
 
-include $(LOCAL_PATH)/microui/Android.mk
+include bootable/userfastboot/microui/Android.mk
+include bootable/userfastboot/libgpt/Android.mk
 

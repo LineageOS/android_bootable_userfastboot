@@ -183,7 +183,10 @@ static int usb_read_to_file(int fd, unsigned int len)
 	char buf[XFER_MEM_SIZE];
 	int r = 0;
 	int count = 0;
+	unsigned int orig_len = len;
+
 	lseek64(fd, 0, SEEK_SET);
+	mui_show_progress(1.0, 0);
 	while (len > 0)
 	{
 		unsigned int size = (len > XFER_MEM_SIZE) ? XFER_MEM_SIZE : len;
@@ -199,6 +202,7 @@ static int usb_read_to_file(int fd, unsigned int len)
 		}
 		len -= size;
 		count += size;
+		mui_set_progress((float)count / (float)orig_len);
 	}
 
 	return count;
@@ -229,7 +233,7 @@ void fastboot_fail(const char *reason)
 
 void fastboot_okay(const char *info)
 {
-	pr_debug("ack OKAY %s\n", info);
+	pr_info("ack OKAY %s\n", info);
 	fastboot_ack("OKAY", info);
 }
 
@@ -255,6 +259,7 @@ static void cmd_download(char *arg, int *fd, unsigned sz)
 
 	len = strtoul(arg, NULL, 16);
 	pr_debug("fastboot: cmd_download %d bytes\n", len);
+	pr_status("Receiving %d bytes\n", len);
 
 	download_size = 0;
 
@@ -292,7 +297,7 @@ again:
 		if (r < 0)
 			break;
 		buffer[r] = 0;
-		pr_debug("fastboot got command: %s\n", buffer);
+		pr_info("fastboot got command: %s\n", buffer);
 
 		for (cmd = cmdlist; cmd; cmd = cmd->next) {
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
@@ -302,7 +307,8 @@ again:
 
 			fd = open(FASTBOOT_DOWNLOAD_TMP_FILE, O_RDWR | O_CREAT, 0600);
 			if (fd < 0){
-				pr_error("fastboot: command_loop cannot open the temp file errno:%d", errno);
+				pr_error("fastboot: command_loop cannot open the temp file: %s\n",
+						strerror(errno));
 				fastboot_fail("fastboot failed");
 			}
 
@@ -396,6 +402,8 @@ static int fastboot_handler(void *arg)
 	fds[tcp_fd_idx].fd = -1;
 
 	for (;;) {
+		pr_status("Awaiting commands\n");
+
 		if (fds[usb_fd_idx].fd == -1)
 			fds[usb_fd_idx].fd = open_usb();
 		if (fds[tcp_fd_idx].fd == -1)

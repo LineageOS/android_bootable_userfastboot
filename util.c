@@ -56,7 +56,7 @@
 /* make_ext4fs.h can't be included along with linux/ext3_fs.h.
  * This is the only item needed out of the former. */
 extern int make_ext4fs(const char *filename, int64_t len,
-                const char *mountpoint, struct selabel_handle *sehnd);
+		const char *mountpoint, struct selabel_handle *sehnd);
 
 void die(void)
 {
@@ -107,90 +107,6 @@ char *xasprintf(const char *fmt, ...)
 	return out;
 }
 
-#define CHUNK 1024 * 256
-
-int named_file_write_decompress_gzip(const char *filename,
-	unsigned char *what, size_t sz, off_t offset, int append)
-{
-	int ret;
-	unsigned int have;
-	z_stream strm;
-	FILE *dest;
-	unsigned char out[CHUNK];
-
-	dest = fopen(filename, append ? "a" : "w");
-	if (!dest) {
-		pr_perror("fopen");
-		return -1;
-	}
-
-	/* allocate inflate state */
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;
-	strm.avail_in = 0;
-	strm.next_in = Z_NULL;
-	ret = inflateInit2(&strm, 15 + 32);
-	if (ret != Z_OK) {
-		pr_error("zlib inflateInit error");
-		fclose(dest);
-		return ret;
-	}
-
-	if (offset && fseeko(dest, offset, SEEK_SET)) {
-		pr_perror("fseek");
-		ret = -1;
-		goto out;
-	}
-
-	do {
-		strm.avail_in = (sz > CHUNK) ? CHUNK : sz;
-		if (strm.avail_in == 0)
-			break;
-		strm.next_in = what;
-
-		what += strm.avail_in;
-		sz -= strm.avail_in;
-
-		/* run inflate() on input until output buffer not full */
-		do {
-			strm.avail_out = CHUNK;
-			strm.next_out = out;
-			ret = inflate(&strm, Z_NO_FLUSH);
-			if (ret == Z_STREAM_ERROR) {
-				pr_error("zlib state clobbered");
-				die();
-			}
-			switch (ret) {
-			case Z_NEED_DICT:
-				ret = Z_DATA_ERROR;     /* and fall through */
-			case Z_DATA_ERROR:
-			case Z_MEM_ERROR:
-				pr_perror("zlib memory/data/corruption error");
-				goto out;
-			}
-			have = CHUNK - strm.avail_out;
-			if (fwrite(out, 1, have, dest) != have ||
-					ferror(dest)) {
-				pr_perror("fwrite");
-				ret = -1;
-				goto out;
-			}
-		} while (strm.avail_out == 0);
-		/* done when inflate() says it's done */
-	} while (ret != Z_STREAM_END);
-
-	if (ret == Z_STREAM_END)
-		ret = 0;
-	else
-		pr_error("zlib data error");
-out:
-	/* clean up and return */
-	(void)inflateEnd(&strm);
-	fclose(dest);
-	return ret;
-}
-
 
 int named_file_write_ext4_sparse(const char *filename, const char *what)
 {
@@ -225,6 +141,7 @@ int named_file_write_ext4_sparse(const char *filename, const char *what)
 
 	pr_verbose("Destroying sparse data stucture\n");
 	sparse_file_destroy(s);
+	fsync(outfd);
 out:
 	if (infd >= 0)
 		close(infd);
@@ -239,6 +156,8 @@ int named_file_write(const char *filename, const unsigned char *what,
 		size_t sz, off_t offset, int append)
 {
 	int fd, ret, flags;
+	size_t sz_orig = sz;
+	size_t count = 0;
 
 	flags = O_RDWR | (append ? O_APPEND : O_CREAT);
 	if (flags & O_CREAT)
@@ -258,18 +177,28 @@ int named_file_write(const char *filename, const unsigned char *what,
 		}
 	}
 
+	mui_show_progress(1.0, 0);
+	pr_verbose("write() %zu bytes to %s\n", sz, filename);
+
 	while (sz) {
-		pr_verbose("write() %zu bytes to %s\n", sz, filename);
-		ret = write(fd, what, sz);
-		if (ret <= 0 && errno != EINTR) {
-			pr_error("file_write: Failed to write to %s: %s\n",
+		mui_set_progress((float)count / (float)sz_orig);
+
+		ret = write(fd, what, min(sz, 1024U * 1024U));
+		if (ret < 0) {
+			if (errno != EINTR) {
+				pr_error("file_write: Failed to write to %s: %s\n",
 					filename, strerror(errno));
-			close(fd);
-			return -1;
+				close(fd);
+				return -1;
+			} else {
+				continue;
+			}
 		}
 		what += ret;
 		sz -= ret;
+		count += ret;
 	}
+	fsync(fd);
 	close(fd);
 	return 0;
 }
@@ -286,7 +215,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 
 	pr_debug("Mounting %s (%s) --> %s\n", device,
 			type, mountpoint);
-	ret = mount(device, mountpoint, type, MS_SYNCHRONOUS, "");
+	ret = mount(device, mountpoint, type, 0, "");
 	if (ret && errno != EBUSY) {
 		pr_debug("mount: %s", strerror(errno));
 		return -1;
@@ -345,63 +274,131 @@ int unmount_partition(struct fstab_rec *vol)
 	return ret;
 }
 
+enum erase_type {
+	SECDISCARD,
+	DISCARD,
+	ZERO
+};
+
+static int erase_range(int fd, uint64_t start, uint64_t len)
+{
+	char zeroes[4096];
+	uint64_t range[2];
+	uint64_t to_write;
+	int ret;
+	static enum erase_type etype = SECDISCARD;
+
+	switch (etype) {
+	case SECDISCARD:
+		range[0] = start;
+		range[1] = len;
+
+		ret = ioctl(fd, BLKSECDISCARD, &range);
+		if (ret >= 0)
+			break;
+		pr_debug("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
+				strerror(errno));
+		etype = DISCARD;
+		/* fall through */
+	case DISCARD:
+		range[0] = start;
+		range[1] = len;
+
+		ret = ioctl(fd, BLKDISCARD, &range);
+		if (ret >= 0)
+			break;
+		pr_debug("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
+				strerror(errno));
+		etype = ZERO;
+		/* Fall through */
+	case ZERO:
+		if (lseek64(fd, start, SEEK_SET) < 0) {
+			pr_perror("lseek64");
+			return -1;
+		}
+
+		while (len) {
+			ssize_t ret;
+
+			ret = write(fd, zeroes, min(len, sizeof(zeroes)));
+			if (ret < 0) {
+				pr_perror("write");
+				return -1;
+			}
+			len -= ret;
+		}
+	}
+
+	return 0;
+}
+
+static char *get_disk_sysfs(char *node)
+{
+	struct stat sb;
+	if (stat(node, &sb)) {
+		pr_perror("stat");
+		return NULL;
+	}
+
+	return xasprintf("/sys/dev/block/%d:0/", major(sb.st_rdev));
+}
+
 
 int erase_partition(struct fstab_rec *vol)
 {
-	uint64_t range[2];
-	uint64_t disk_size;
+	int64_t disk_size;
 	int fd;
-	int ret;
-	char zeroes[4096];
+	int ret = -1;
+	int i;
+	int64_t increment;
+	int64_t pos;
+	int64_t granularity;
+	int64_t max_bytes;
+	int64_t blocks;
+	char *disk_name = NULL;
 
 	if (!is_valid_blkdev(vol->blk_device)) {
 		pr_error("invalid destination node. partition disks?\n");
 		return -1;
 	}
-	get_volume_size(vol, &disk_size);
-
-	range[0] = 0;
-	range[1] = disk_size;
-
-	fd = open(vol->blk_device, O_WRONLY);
+	get_volume_size(vol, (uint64_t *)&disk_size);
+	fd = open(vol->blk_device, O_RDWR);
 	if (fd < 0) {
 		pr_error("couldn't open block device %s\n", vol->blk_device);
 		return -1;
 	}
 
-	ret = ioctl(fd, BLKSECDISCARD, &range);
-	if (ret >= 0) {
-		pr_info("Wiped %s with BLKSECDISCARD\n", vol->blk_device);
-		close(fd);
-		return 0;
+	/* It would be great if we could do BLKSECDISCARD on small regions
+	 * so that we can update the progress bar, but each of these ioctls
+	 * has a very long setup/teardown phase which makes the entire operation
+	 * much slower if we call multiple times on small areas */
+	disk_name = get_disk_sysfs(vol->blk_device);
+	if (!disk_name)
+		goto out;
+	if (read_sysfs_int64(&max_bytes, "%s/queue/discard_max_bytes", disk_name))
+		goto out;
+
+	if (max_bytes && disk_size > max_bytes) {
+		mui_show_progress(1.0, 0);
+		increment = max_bytes;
+	} else
+		increment = disk_size;
+
+	pos = 0;
+	while (pos < disk_size) {
+		mui_set_progress((float)pos / (float)disk_size);
+		if (pos + increment > disk_size)
+			increment = disk_size - pos;
+		if (erase_range(fd, pos, increment))
+			goto out;
+		pos += increment;
 	}
-
-	range[0] = 0;
-	range[1] = disk_size;
-
-	ret = ioctl(fd, BLKDISCARD, &range);
-	if (ret >= 0) {
-		pr_info("Wiped %s with BLKDISCARD\n", vol->blk_device);
-		close(fd);
-		return 0;
-	}
-
-	pr_info("Zeroing out %s as BLK*DISCARD ioctls not supported, this may take a while...\n",
-			vol->blk_device);
-	memset(zeroes, 0, sizeof(zeroes));
-	while (disk_size) {
-		ssize_t ret;
-
-		ret = write(fd, zeroes, sizeof(zeroes));
-		if (ret < 0) {
-			pr_error("Failed writing to device %s: %s\n", vol->blk_device, strerror(errno));
-			close(fd);
-			return -1;
-		}
-		disk_size -= ret;
-	}
+	ret = 0;
+out:
+	free(disk_name);
+	fsync(fd);
 	close(fd);
-	return 0;
+	return ret;
 }
 
 
@@ -563,4 +560,114 @@ void import_kernel_cmdline(void (*callback)(char *name))
 		ptr = x;
 	}
 }
+
+int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
+			int index, void *context), void *context)
+{
+	char *saveptr, *entry, *str;
+	int idx = 0;
+	char *list;
+	int ret = 0;
+
+	if (!stringlist)
+		return -1;
+
+	list = xstrdup(stringlist);
+	for (str = list; ; str = NULL) {
+		entry = strtok_r(str, " \t", &saveptr);
+		if (!entry)
+			break;
+		if (!cb(entry, idx++, context)) {
+			ret = -1;
+			break;
+		}
+	}
+out:
+	free(list);
+	return ret;
+}
+
+static ssize_t robust_read(int fd, void *buf, size_t count, bool short_ok)
+{
+	unsigned char *pos = buf;
+	ssize_t ret;
+	ssize_t total = 0;
+	do {
+		ret = read(fd, pos, count);
+		if (ret < 0) {
+			if (errno != EINTR) {
+				pr_perror("read");
+				return -1;
+			} else
+				continue;
+		}
+		count -= ret;
+		pos += ret;
+		total += ret;
+	} while (count && !short_ok);
+	return total;
+}
+
+static char *__read_sysfs(const char *fmt, va_list ap)
+{
+	int fd;
+	char buf[4096];
+	char *filename;
+	ssize_t bytes_read;
+
+	if (vasprintf(&filename, fmt, ap) < 0) {
+		pr_perror("vasprintf");
+		return NULL;
+	}
+
+	pr_verbose("Opening %s\n", filename);
+	fd = open(filename, O_RDONLY);
+	free(filename);
+	if (fd < 0) {
+		pr_perror("open");
+		return NULL;
+	}
+
+	bytes_read = robust_read(fd, buf, sizeof(buf) - 1, true);
+	if (bytes_read < 0)
+		return NULL;
+
+	buf[bytes_read] = '\0';
+	while (bytes_read && buf[--bytes_read] == '\n')
+		buf[bytes_read] = '\0';
+	return xstrdup(buf);
+}
+
+
+char *read_sysfs(const char *fmt, ...)
+{
+	va_list ap;
+	char *ret;
+
+	va_start(ap, fmt);
+	ret = __read_sysfs(fmt, ap);
+	va_end(ap);
+	return ret;
+}
+
+
+int read_sysfs_int64(int64_t *val, const char *fmt, ...)
+{
+	va_list ap;
+	char *ret;
+
+	va_start(ap, fmt);
+	ret = __read_sysfs(fmt, ap);
+	va_end(ap);
+	if (!ret)
+		return -1;
+	*val = atoll(ret);
+	free(ret);
+	return 0;
+}
+
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
+
 

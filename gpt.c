@@ -49,12 +49,6 @@ static uint64_t round_up_to_multiple(uint64_t val, uint64_t multiple)
 }
 
 
-static uint64_t mib_align(uint64_t val)
-{
-	return round_up_to_multiple(val, 1 << 20);
-}
-
-
 static uint64_t to_unit_ceiling(uint64_t val, uint64_t unit)
 {
 	return round_up_to_multiple(val, unit) / unit;
@@ -194,7 +188,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 	struct flash_gpt_context *ctx;
 	int64_t len;
 	uint64_t flags;
-	char *label, *type, *flagstr, *guidstr, *title, *efiboot;
+	char *label, *type, *flagstr, *guidstr;
 	struct gpt_entry *ge;
 	int type_code;
 	uint32_t index;
@@ -285,7 +279,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 {
 	int ret = -1;
-	char *device, *plist, *str, *saveptr, *buf;
+	char *device, *plist, *buf;
 	struct flash_gpt_context ctx;
 	uint64_t start_lba, end_lba, start_mb, end_mb;
 	uint64_t space_available_mb;

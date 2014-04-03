@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
 	klog_init();
-	klog_set_level(KLOG_DEBUG_LEVEL);
+	klog_set_level(7);
 
 	/* initialize libmicroui */
 #ifdef USE_GUI

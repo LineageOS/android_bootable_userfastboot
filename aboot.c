@@ -205,9 +205,7 @@ static int set_loader_lock(bool state)
 {
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	int ret;
-	uint32_t attributes;
 	char *data;
-	size_t dsize;
 
 	data = state ? "1" : "0";
 
@@ -703,7 +701,7 @@ static void publish_from_prop(char *key, char *prop, char *dfl)
 		char *valcpy = strdup(val);
 		if (valcpy) {
 			fastboot_publish(key, valcpy);
-			pr_uiinfo("%s: %s", key, valcpy);
+			pr_uiinfo("%s: %s\n", key, valcpy);
 		}
 	}
 }

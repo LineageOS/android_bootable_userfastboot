@@ -15,6 +15,8 @@ ufb_modules := \
 	libselinux \
 	linker \
 	linker64 \
+	mksh \
+	systembinsh \
 	sh \
 	su \
 	toolbox \
@@ -155,17 +157,13 @@ efi_default_name := bootx64.efi
 endif
 
 ufb_usb_fs_image := $(PRODUCT_OUT)/fastboot-usb.img
-ufb_usb_efi_bins := $(GUMMIBOOT_EFI) $(LOCKDOWN_EFI)
+ufb_usb_efi_bins := $(BOARD_EFI_MODULES)
 
 ufb_loader_configs := \
 	$(ufb_src_dir)/loader/1fastboot.conf \
 	$(ufb_src_dir)/loader/2lockdown.conf \
 	$(ufb_src_dir)/loader/loader.conf
 
-ifneq ($(TARGET_USE_MOKMANAGER),false)
-ufb_usb_efi_bins += $(MOKMANAGER_EFI)
-ufb_loader_configs += $(ufb_src_dir)/loader/3mokmanager.conf
-endif
 ufb_usb_rootfs := $(ufb_out)/usbroot
 ufb_usb_efi_dir := $(ufb_usb_rootfs)/EFI/BOOT/
 ufb_usb_efi_loader := $(ufb_usb_rootfs)/loader
@@ -175,7 +173,6 @@ $(ufb_usb_fs_image): \
 		$(ufb_src_dir)/make_vfatfs \
 		$(USERFASTBOOT_BOOTIMAGE) \
 		$(ufb_usb_efi_bins) \
-		$(UEFI_SHIM_EFI) \
 		$(ufb_src_dir)/loader/loader.conf \
 		| $(ACP) \
 
@@ -183,7 +180,7 @@ $(ufb_usb_fs_image): \
 	$(hide) mkdir -p $(ufb_usb_rootfs)
 	$(hide) $(ACP) -f $(USERFASTBOOT_BOOTIMAGE) $(ufb_usb_rootfs)/fastboot.img
 	$(hide) mkdir -p $(ufb_usb_efi_dir)
-	$(hide) $(ACP) $(UEFI_SHIM_EFI) $(ufb_usb_efi_dir)/$(efi_default_name)
+	$(hide) $(ACP) $(filter %/shim.efi,$(BOARD_EFI_MODULES)) $(ufb_usb_efi_dir)/$(efi_default_name)
 	$(hide) $(ACP) $(ufb_usb_efi_bins) $(ufb_usb_efi_dir)
 	$(hide) mkdir -p $(ufb_usb_efi_loader)/entries
 	$(hide) $(ACP) $(ufb_src_dir)/loader/loader.conf $(ufb_usb_efi_loader)/

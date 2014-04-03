@@ -284,7 +284,6 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 {
 	char zeroes[4096];
 	uint64_t range[2];
-	uint64_t to_write;
 	int ret;
 	static enum erase_type etype = SECDISCARD;
 
@@ -349,12 +348,9 @@ int erase_partition(struct fstab_rec *vol)
 	int64_t disk_size;
 	int fd;
 	int ret = -1;
-	int i;
 	int64_t increment;
 	int64_t pos;
-	int64_t granularity;
 	int64_t max_bytes;
-	int64_t blocks;
 	char *disk_name = NULL;
 
 	if (!is_valid_blkdev(vol->blk_device)) {
@@ -582,7 +578,6 @@ int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
 			break;
 		}
 	}
-out:
 	free(list);
 	return ret;
 }

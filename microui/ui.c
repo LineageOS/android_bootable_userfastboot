@@ -230,7 +230,6 @@ static void draw_text_line(int row, const char* t) {
 static void draw_screen_locked(void)
 {
     draw_background_locked(gCurrentIcon);
-    draw_progress_locked();
 
     if (show_text) {
         gr_color(0, 0, 0, 160);
@@ -263,6 +262,8 @@ static void draw_screen_locked(void)
             draw_text_line(i, text[(i+text_top) % text_rows]);
         }
         pthread_mutex_unlock(&gTextMutex);
+    } else {
+        draw_progress_locked();
     }
 }
 
@@ -278,7 +279,10 @@ static void update_screen_locked(void)
 // Should only be called with gUpdateMutex locked.
 static void update_progress_locked(void)
 {
-    if (show_text || !gPagesIdentical) {
+    if (show_text)
+        return;
+
+    if (!gPagesIdentical) {
         draw_screen_locked();    // Must redraw the whole screen
         gPagesIdentical = 1;
     } else {
@@ -479,6 +483,19 @@ void mui_reset_progress()
     pthread_mutex_unlock(&gUpdateMutex);
 }
 
+static void remove_linefeeds(char *buf)
+{
+    int end_index;
+
+    end_index = strlen(buf) - 1;
+
+    while (end_index >= 0 && buf[end_index] == '\n') {
+        buf[end_index] = '\0';
+        end_index--;
+    }
+}
+
+
 void mui_status(const char *fmt, ...)
 {
     char buf[256];
@@ -491,6 +508,8 @@ void mui_status(const char *fmt, ...)
 
     if (!gInit)
         return;
+
+    remove_linefeeds(buf);
 
     // This can get called before ui_init(), so be careful.
     pthread_mutex_lock(&gTextMutex);
@@ -518,6 +537,8 @@ void mui_infotext(const char *fmt, ...)
 
     if (!gInit)
         return;
+
+    remove_linefeeds(buf);
 
     // This can get called before ui_init(), so be careful.
     pthread_mutex_lock(&gTextMutex);

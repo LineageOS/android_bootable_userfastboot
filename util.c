@@ -45,7 +45,13 @@
 
 #include <zlib.h>
 #include <cutils/android_reboot.h>
+
 #include <sparse/sparse.h>
+#include "sparse_file.h"
+#include "output_file.h"
+#include "backed_block.h"
+#include "sparse_defs.h"
+#include "sparse_format.h"
 
 #include "fastboot.h"
 #include "userfastboot.h"
@@ -132,12 +138,98 @@ void xstring_append_line(char **str, const char *fmt, ...)
 }
 
 
+static void sparse_file_write_block(struct output_file *out,
+		struct backed_block *bb)
+{
+	switch (backed_block_type(bb)) {
+	case BACKED_BLOCK_DATA:
+		write_data_chunk(out, backed_block_len(bb), backed_block_data(bb));
+		break;
+	case BACKED_BLOCK_FILE:
+		write_file_chunk(out, backed_block_len(bb),
+				backed_block_filename(bb), backed_block_file_offset(bb));
+		break;
+	case BACKED_BLOCK_FD:
+		write_fd_chunk(out, backed_block_len(bb),
+				backed_block_fd(bb), backed_block_file_offset(bb));
+		break;
+	case BACKED_BLOCK_FILL:
+		write_fill_chunk(out, backed_block_len(bb),
+				backed_block_fill_val(bb));
+		break;
+	}
+}
+
+static unsigned int sparse_count_chunks(struct sparse_file *s)
+{
+	struct backed_block *bb;
+	unsigned int last_block = 0;
+	unsigned int chunks = 0;
+
+	for (bb = backed_block_iter_new(s->backed_block_list); bb;
+			bb = backed_block_iter_next(bb)) {
+		if (backed_block_block(bb) > last_block) {
+			/* If there is a gap between chunks, add a skip chunk */
+			chunks++;
+		}
+		chunks++;
+		last_block = backed_block_block(bb) +
+				DIV_ROUND_UP(backed_block_len(bb), s->block_size);
+	}
+	if (last_block < DIV_ROUND_UP(s->len, s->block_size)) {
+		chunks++;
+	}
+
+	return chunks;
+}
+
+static int write_all_blocks(struct sparse_file *s, struct output_file *out)
+{
+	struct backed_block *bb;
+	unsigned int last_block = 0;
+	int64_t pad;
+	unsigned int total_blocks = 0;
+	unsigned int count = 0;
+
+	for (bb = backed_block_iter_new(s->backed_block_list); bb;
+			bb = backed_block_iter_next(bb))
+		total_blocks++;
+
+	mui_show_progress(1.0, 0);
+
+	for (bb = backed_block_iter_new(s->backed_block_list); bb;
+			bb = backed_block_iter_next(bb)) {
+		mui_set_progress((float)count / (float)total_blocks);
+		if (backed_block_block(bb) > last_block) {
+			unsigned int blocks = backed_block_block(bb) - last_block;
+			write_skip_chunk(out, (int64_t)blocks * s->block_size);
+		}
+		sparse_file_write_block(out, bb);
+		last_block = backed_block_block(bb) +
+				DIV_ROUND_UP(backed_block_len(bb), s->block_size);
+		count++;
+	}
+
+	mui_reset_progress();
+	pad = s->len - (int64_t)last_block * s->block_size;
+	if (pad < 0) {
+		return -1;
+	}
+	if (pad > 0) {
+		write_skip_chunk(out, pad);
+	}
+
+	return 0;
+}
+
 int named_file_write_ext4_sparse(const char *filename, const char *what)
 {
 	int infd = -1;
 	int outfd = -1;
 	int ret = -1;
 	struct sparse_file *s;
+	int chunks;
+	struct output_file *out;
 
 	outfd = open(filename, O_WRONLY);
 	if (outfd < 0) {
@@ -158,7 +250,17 @@ int named_file_write_ext4_sparse(const char *filename, const char *what)
 	}
 
 	pr_verbose("Writing sparse file data\n");
-	if (sparse_file_write(s, outfd, false, false, false) < 0)
+
+	chunks = sparse_count_chunks(s);
+	out = output_file_open_fd(outfd, s->block_size, s->len,
+			false, false, chunks, false);
+	if (!out)
+		die_errno("malloc");
+
+	ret = write_all_blocks(s, out);
+	output_file_close(out);
+
+	if (ret < 0)
 		pr_error("Couldn't write output file");
 	else
 		ret = 0;
@@ -210,6 +312,7 @@ int named_file_write(const char *filename, const unsigned char *what,
 		ret = write(fd, what, min(sz, 1024U * 1024U));
 		if (ret < 0) {
 			if (errno != EINTR) {
+				mui_reset_progress();
 				pr_error("file_write: Failed to write to %s: %s\n",
 					filename, strerror(errno));
 				close(fd);
@@ -224,6 +327,7 @@ int named_file_write(const char *filename, const unsigned char *what,
 	}
 	fsync(fd);
 	close(fd);
+	mui_reset_progress();
 	return 0;
 }
 
@@ -388,6 +492,7 @@ int erase_partition(struct fstab_rec *vol)
 		return -1;
 	}
 
+	mui_show_indeterminate_progress();
 	/* It would be great if we could do BLKSECDISCARD on small regions
 	 * so that we can update the progress bar, but each of these ioctls
 	 * has a very long setup/teardown phase which makes the entire operation
@@ -415,6 +520,7 @@ int erase_partition(struct fstab_rec *vol)
 	}
 	ret = 0;
 out:
+	mui_reset_progress();
 	free(disk_name);
 	fsync(fd);
 	close(fd);

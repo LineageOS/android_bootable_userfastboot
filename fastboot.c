@@ -187,6 +187,7 @@ static int usb_read_to_file(int fd, unsigned int len)
 	unsigned int orig_len = len;
 
 	lseek64(fd, 0, SEEK_SET);
+
 	mui_show_progress(1.0, 0);
 	while (len > 0)
 	{
@@ -194,18 +195,21 @@ static int usb_read_to_file(int fd, unsigned int len)
 		r = usb_read(buf, size);
 		if ((r < 0) || ((unsigned int)r != size)) {
 			pr_error("fastboot: usb_read_to_file error only got %d bytes\n", r);
-			return -1;
+			count = -1;
+			goto out;
 		}
 		r = write(fd, buf, size);
 		if ((r < 0) || ((unsigned int)r != size)) {
 			pr_error("fastboot: usb_read_to_file error only wrote %d bytes to file. Needed:%d\n", r, size);
-			return -1;
+			count = -1;
+			goto out;
 		}
 		len -= size;
 		count += size;
 		mui_set_progress((float)count / (float)orig_len);
 	}
-
+out:
+	mui_reset_progress();
 	return count;
 }
 
@@ -318,7 +322,6 @@ again:
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
 				continue;
 			fastboot_state = STATE_COMMAND;
-			mui_show_indeterminate_progress();
 
 			fd = open(FASTBOOT_DOWNLOAD_TMP_FILE, O_RDWR | O_CREAT, 0600);
 			if (fd < 0){
@@ -335,7 +338,6 @@ again:
                         if (fd >= 0)
 				close(fd);
 
-			mui_reset_progress();
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");
 			goto again;

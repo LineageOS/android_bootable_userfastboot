@@ -44,6 +44,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include <cutils/android_reboot.h>
 #include <cutils/hashmap.h>
@@ -426,6 +427,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	flash_func cb;
 	int ret;
         struct fstab_rec *vol;
+	uint64_t vsize;
 
 	void *data = NULL;
 	uint32_t magic = 0;
@@ -464,7 +466,12 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out_map;
 	}
-	pr_info("Writing %u bytes to %s\n", sz, vol->blk_device);
+	if (get_volume_size(vol, &vsize)) {
+		fastboot_fail("couldn't get volume size");
+		goto out_map;
+	}
+
+	pr_debug("target '%s' volume size: %" PRIu64 " MiB\n", targetspec, vsize >> 20);
 
 	if (sz >= sizeof(magic))
 		memcpy(&magic, data, sizeof(magic));
@@ -473,9 +480,21 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		/* If there is enough data to hold the header,
 		 * and MAGIC appears in header,
 		 * then it is a sparse ext4 image */
-		pr_debug("Detected sparse header\n");
+		struct sparse_header *sh = (struct sparse_header *)data;
+		uint64_t totalsize = (uint64_t)sh->blk_sz * (uint64_t)sh->total_blks;
+		pr_debug("Detected sparse header, total size %" PRIu64 " MiB\n",
+				totalsize >> 20);
+		if (totalsize > vsize) {
+			fastboot_fail("target partition too small!");
+			goto out_map;
+		}
 		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
+		if (sz > vsize) {
+			fastboot_fail("target partition too small!");
+			goto out_map;
+		}
+		pr_info("Writing %u MiB to %s\n", sz >> 20, vol->blk_device);
 		ret = named_file_write(vol->blk_device, data, sz, 0, 0);
 	}
 	pr_verbose("Done writing image\n");
@@ -596,7 +615,7 @@ static void cmd_boot(char *arg, int *fd, unsigned sz)
 	int success = 0;
 	void *data;
 
-	pr_status("Preparing boot image");
+	pr_status("Preparing boot image\n");
 
 	vol_bootloader = volume_for_name("bootloader");
 	if (vol_bootloader == NULL) {

@@ -244,7 +244,7 @@ static int set_loader_lock(bool state)
 		if (!is_loader_locked()) {
 			register_unlocked_commands();
 			pr_info("Fastboot now unlocked\n");
-			fastboot_publish("locked", "0");
+			fastboot_publish("unlocked", "yes");
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
 			return -1;
@@ -701,7 +701,7 @@ void aboot_register_commands(void)
 	fastboot_publish("product", DEVICE_NAME);
 	fastboot_publish("kernel", "userfastboot");
 	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
-	fastboot_publish("version-baseband", "unknown");
+	fastboot_publish("version-baseband", "N/A");
 	publish_from_prop("serialno", "ro.serialno", "unknown");
 
 	flash_cmds = hashmapCreate(8, strhash, strcompare);
@@ -712,13 +712,24 @@ void aboot_register_commands(void)
 	}
 	publish_all_part_data();
 
+	/* Currently we don't require signatures on images */
+	fastboot_publish("secure", "no");
+
+	/* At this time we don't have a special 'charge mode',
+	 * which is entered when power is applied.
+	 * if later we do, we need to implement a
+	 * 'fastboot oem off-mode-charge 0' which bypasses
+	 * charge mode and boots the device normally as
+	 * if the user pressed the power button */
+	fastboot_publish("off-mode-charge", "0");
+
 	if (!is_loader_locked()) {
 		register_unlocked_commands();
-		fastboot_publish("locked", "0");
+		fastboot_publish("unlocked", "yes");
 		pr_uiinfo("Fastboot is UNLOCKED\n");
 	} else {
 		pr_uiinfo("Fastboot is LOCKED, please use 'fastboot oem unlock'\n");
-		fastboot_publish("locked", "1");
+		fastboot_publish("unlocked", "no");
 	}
 }
 

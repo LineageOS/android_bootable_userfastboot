@@ -93,6 +93,7 @@ void fastboot_publish(const char *name, const char *value)
 const char *fastboot_getvar(const char *name)
 {
 	struct fastboot_var *var;
+
 	for (var = varlist; var; var = var->next)
 		if (!strcmp(name, var->name))
 			return (var->value);
@@ -219,36 +220,50 @@ void fastboot_ack(const char *code, const char *reason)
 		reason = "";
 
 	snprintf(response, MAGIC_LENGTH, "%s%s", code, reason);
-	fastboot_state = STATE_COMPLETE;
+	usb_write(response, MAGIC_LENGTH);
 
-	usb_write(response, strlen(response));
+}
 
+void fastboot_info(const char *info)
+{
+	fastboot_ack("INFO", info);
+	pr_info("ack INFO: %s\n", info);
 }
 
 void fastboot_fail(const char *reason)
 {
 	pr_error("ack FAIL %s\n", reason);
 	fastboot_ack("FAIL", reason);
+	fastboot_state = STATE_COMPLETE;
 }
 
 void fastboot_okay(const char *info)
 {
 	pr_info("ack OKAY %s\n", info);
 	fastboot_ack("OKAY", info);
+	fastboot_state = STATE_COMPLETE;
 }
 
 static void cmd_getvar(char *arg, int *fd, unsigned sz)
 {
-	struct fastboot_var *var;
+	const char *value;
 
 	pr_debug("fastboot: cmd_getvar %s\n", arg);
-	for (var = varlist; var; var = var->next) {
-		if (!strcmp(var->name, arg)) {
-			fastboot_okay(var->value);
-			return;
+	if (!strcmp(arg, "all")) {
+		struct fastboot_var *var;
+		for (var = varlist; var; var = var->next) {
+			char *line = xasprintf("%s: %s", var->name, var->value);
+			fastboot_info(line);
+		}
+		fastboot_okay("");
+	} else {
+		value = fastboot_getvar(arg);
+		if (value) {
+			fastboot_okay(value);
+		} else {
+			fastboot_fail("unknown");
 		}
 	}
-	fastboot_okay("");
 }
 
 static void cmd_download(char *arg, int *fd, unsigned sz)
@@ -446,10 +461,9 @@ int fastboot_init(unsigned long size)
 	char download_max_str[30];
 	pr_verbose("fastboot_init()\n");
 	download_max = size;
-	snprintf(download_max_str, sizeof(download_max_str), "%lu\n", download_max);
+	snprintf(download_max_str, sizeof(download_max_str), "0x%lX", download_max);
 	fastboot_register("getvar:", cmd_getvar);
 	fastboot_register("download:", cmd_download);
-	fastboot_publish("version", "0.5");
 	fastboot_publish("max-download-size", download_max_str);
 	fastboot_handler(NULL);
 

@@ -109,7 +109,7 @@ static void publish_part_data(struct fstab_rec *v, char *name)
 		die();
 	}
 	get_volume_size(v, &size);
-	if (asprintf(&buf2, "%" PRIx64, size) < 0) {
+	if (asprintf(&buf2, "0x%" PRIx64, size) < 0) {
 		pr_error("out of memory\n");
 		die();
 	}

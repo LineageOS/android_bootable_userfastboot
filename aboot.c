@@ -419,12 +419,6 @@ static int cmd_flash_ota_update(Hashmap *params, int *fd, unsigned sz)
  * delimited from the target name by a colon. Each parameter is either
  * a simple string (for flags) or param=value.
  *
- * For flash commands not handled by a plug-in, the following parameters
- * can be set:
- *
- * offset=    : Write the image to the destination at a designated byte offset
- *              from the beginning of the device node. Suffixes "G", "M",
- *              and "K" are recognized.
  */
 static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 {
@@ -433,8 +427,6 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	int ret;
         struct fstab_rec *vol;
 
-	off_t offset = 0;
-	char *offsetstr;
 	void *data = NULL;
 	uint32_t magic = 0;
 
@@ -462,24 +454,6 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		}
 	}
 
-	if ( (offsetstr = hashmapGet(tgt.params, "offset")) ) {
-		off_t multiplier = 1;
-
-		switch (offsetstr[strlen(offsetstr) - 1]) {
-		case 'G':
-			multiplier *= 1024;
-			/* fall through */
-		case 'M':
-			multiplier *= 1024;
-			/* fall through */
-		case 'K':
-			multiplier *= 1024;
-			offsetstr[strlen(offsetstr) - 1] = '\0';
-		}
-
-		offset = atol(offsetstr) * multiplier;
-	}
-
 	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
 	if (data == (void*)-1){
 		pr_error("Failed to mmap the file\n");
@@ -490,8 +464,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		fastboot_fail("invalid destination node. partition disks?");
 		goto out_map;
 	}
-	pr_info("Writing %u bytes to %s at offset: %jd\n",
-				sz, vol->blk_device, (intmax_t)offset);
+	pr_info("Writing %u bytes to %s\n", sz, vol->blk_device);
 
 	if (sz >= sizeof(magic))
 		memcpy(&magic, data, sizeof(magic));
@@ -503,7 +476,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		pr_debug("Detected sparse header\n");
 		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
-		ret = named_file_write(vol->blk_device, data, sz, offset, 0);
+		ret = named_file_write(vol->blk_device, data, sz, 0, 0);
 	}
 	pr_verbose("Done writing image\n");
 	if (ret) {

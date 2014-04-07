@@ -102,9 +102,33 @@ char *xasprintf(const char *fmt, ...)
 	ret = vasprintf(&out, fmt, ap);
 	va_end(ap);
 
-	if (!ret)
+	if (ret < 0)
 		die_errno("asprintf");
 	return out;
+}
+
+
+void xstring_append_line(char **str, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+	char *out, *newstr;
+
+	va_start(ap, fmt);
+	ret = vasprintf(&out, fmt, ap);
+	va_end(ap);
+
+	if (ret < 0)
+		die_errno("asprintf");
+
+	if (*str) {
+		newstr = xasprintf("%s\n%s", *str, out);
+		free(*str);
+		free(out);
+		*str = newstr;
+	} else {
+		*str = out;
+	}
 }
 
 

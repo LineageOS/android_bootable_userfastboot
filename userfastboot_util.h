@@ -24,13 +24,14 @@ void apply_sw_update(const char *location, int send_fb_ok);
 int mount_partition_device(const char *device, const char *type, char *mountpoint);
 void import_kernel_cmdline(void (*callback)(char *name));
 int is_valid_blkdev(const char *node);
-char *read_sysfs(const char *fmt, ...);
-int read_sysfs_int64(int64_t *val, const char *fmt, ...);
+char *read_sysfs(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+int read_sysfs_int64(int64_t *val, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
 
 /* Fails assertion if memory allocations fail */
 char *xstrdup(const char *s);
-char *xasprintf(const char *fmt, ...);
+char *xasprintf(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 void *xmalloc(size_t size);
+void xstring_append_line(char **str, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
 
 /* struct fstab_rec operations */
 int mount_partition(struct fstab_rec *vol);

@@ -42,6 +42,7 @@
 #include <unistd.h>
 #include <linux/fs.h>
 #include <inttypes.h>
+#include <linux/loop.h>
 
 #include <zlib.h>
 #include <cutils/android_reboot.h>
@@ -351,6 +352,55 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 	return 0;
 }
 
+
+int mount_loopback(const char *path, const char *type, char *mountpoint)
+{
+	int ret, file_fd, loop_fd, i;
+	struct loop_info info;
+
+	ret = mkdir(mountpoint, 0777);
+	if (ret && errno != EEXIST) {
+		pr_perror("mkdir");
+		return -1;
+	}
+
+	file_fd = open(path, O_RDONLY);
+	if (file_fd < 0) {
+		pr_perror("open");
+		return -1;
+	}
+
+	for (i = 0; ; i++) {
+		char tmp[PATH_MAX];
+
+		snprintf(tmp, PATH_MAX, "/dev/block/loop%d", i);
+		loop_fd = open(tmp, O_RDONLY);
+		if (loop_fd < 0) {
+			pr_error("Couldn't open a loop device %s\n", tmp);
+			pr_perror("open");
+			close(file_fd);
+			return -1;
+		}
+
+		if (ioctl(loop_fd, LOOP_GET_STATUS, &info) < 0 && errno == ENXIO) {
+			if (ioctl(loop_fd, LOOP_SET_FD, file_fd) >= 0) {
+				close(file_fd);
+
+				if (mount(tmp, mountpoint, type, MS_RDONLY, NULL) < 0) {
+					pr_error("loopback mount failed\n");
+					pr_perror("mount");
+					ioctl(loop_fd, LOOP_CLR_FD, 0);
+					close(loop_fd);
+					return -1;
+				}
+
+				close(loop_fd);
+				return 0; /* success */
+			}
+		}
+		close(loop_fd);
+	}
+}
 
 int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 {

@@ -35,6 +35,7 @@ void xstring_append_line(char **str, const char *fmt, ...) __attribute__ ((forma
 
 /* struct fstab_rec operations */
 int mount_partition(struct fstab_rec *vol);
+int mount_loopback(const char *path, const char *type, char *mountpoint);
 int erase_partition(struct fstab_rec *vol);
 int check_ext_superblock(struct fstab_rec *vol, int *sb_present);
 int unmount_partition(struct fstab_rec *vol);

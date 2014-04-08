@@ -601,14 +601,12 @@ int execute_command_data(void *data, unsigned sz, const char *fmt, ...)
 int is_valid_blkdev(const char *node)
 {
 	struct stat statbuf;
-	if (stat(node, &statbuf)) {
-		pr_perror("stat");
+	if (stat(node, &statbuf))
 		return 0;
-	}
-	if (!S_ISBLK(statbuf.st_mode)) {
-		pr_error("%s is not a block device\n", node);
+
+	if (!S_ISBLK(statbuf.st_mode))
 		return 0;
-	}
+
 	return 1;
 }
 

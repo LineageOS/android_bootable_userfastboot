@@ -265,7 +265,7 @@ static void cmd_getvar(char *arg, int *fd, unsigned sz)
 		if (value) {
 			fastboot_okay(value);
 		} else {
-			fastboot_fail("unknown");
+			fastboot_okay("");
 		}
 	}
 }

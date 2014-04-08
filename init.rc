@@ -1,6 +1,5 @@
 import /init.userfastboot.rc
 import /init.recovery.${ro.hardware}.rc
-import /init.recovery.composite.rc
 
 on early-init
     loglevel 7

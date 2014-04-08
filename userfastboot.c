@@ -56,6 +56,7 @@
 #include "fastboot.h"
 #include "userfastboot_ui.h"
 #include "userfastboot_fstab.h"
+#include "network.h"
 
 /* Synchronize operations which touch EMMC. Fastboot holds this any time it
  * executes a command. Threads which touch the disk should do likewise. */
@@ -77,9 +78,6 @@ int main(int argc, char **argv)
 #ifdef USE_GUI
 	mui_init();
 #endif
-
-	pr_uiinfo("-- UserFastBoot %s for %s --\n", USERFASTBOOT_VERSION, DEVICE_NAME);
-
 	mui_set_background(BACKGROUND_ICON_INSTALLING);
 
 	struct selinux_opt seopts[] = {
@@ -94,6 +92,7 @@ int main(int argc, char **argv)
 
 	load_volume_table();
 	aboot_register_commands();
+	start_interface_thread();
 
 	ret = statfs("/tmp", &buf);
 	if (!ret) {

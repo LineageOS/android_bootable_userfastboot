@@ -23,6 +23,8 @@
 
 #include "microui/microui.h"
 #include <cutils/klog.h>
+#include <errno.h>
+#include <string.h>
 
 #define pr_perror(x)	pr_error("%s failed: %s\n", x, strerror(errno))
 
@@ -58,10 +60,5 @@
 	KLOG_NOTICE("userfastboot", __VA_ARGS__); \
 	mui_status(__VA_ARGS__); \
 	} while (0)
-
-#define pr_uiinfo(...)		do { \
-	KLOG_NOTICE("userfastboot", __VA_ARGS__); \
-	mui_infotext(__VA_ARGS__); \
-	} while (0);
 
 #endif

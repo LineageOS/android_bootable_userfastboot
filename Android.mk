@@ -9,7 +9,8 @@ LOCAL_SRC_FILES := \
 	util.c \
 	userfastboot.c \
 	fstab.c \
-	gpt.c
+	gpt.c \
+	network.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Werror

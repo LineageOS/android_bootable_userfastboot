@@ -525,29 +525,30 @@ void mui_status(const char *fmt, ...)
     }
 }
 
-void mui_infotext(const char *fmt, ...)
+void mui_infotext(const char *infodata)
 {
-    char buf[256];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, 256, fmt, ap);
-    va_end(ap);
-
-    mui_print("%s", buf);
+    char *saveptr, *str, *idata, *token;
 
     if (!gInit)
         return;
 
-    remove_linefeeds(buf);
+    idata = strdup(infodata);
+    if (!idata)
+        return;
 
-    // This can get called before ui_init(), so be careful.
     pthread_mutex_lock(&gTextMutex);
-    if (info_row < MAX_ROWS) {
-	strncpy(infotext[info_row], buf, MAX_COLS);
+    info_row = 0;
+    for (str = idata, info_row = 0; info_row < MAX_ROWS; str = NULL, info_row++) {
+        token = strtok_r(str, "\n", &saveptr);
+        if (!token) {
+            infotext[info_row][0] = '\0';
+            break;
+        }
+        strncpy(infotext[info_row], token, MAX_COLS);
 	infotext[info_row][MAX_COLS - 1] = '\0';
-	info_row++;
     }
     pthread_mutex_unlock(&gTextMutex);
+    free(idata);
 
     pthread_mutex_lock(&gUpdateMutex);
     update_screen_locked();

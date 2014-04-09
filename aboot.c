@@ -71,7 +71,6 @@
  * registration functions for device-specific extensions. */
 #include "register.inc"
 
-#define CMD_SYSTEM		"system"
 #define CMD_SHOWTEXT		"showtext"
 #define CMD_LOCK		"lock"
 #define CMD_UNLOCK		"unlock"
@@ -594,19 +593,6 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 			fastboot_fail(argv[0]);
 		} else
 			fastboot_okay("");
-	} else if (strcmp(argv[0], CMD_SYSTEM) == 0) {
-		int retval;
-		arg += strlen(CMD_SYSTEM);
-		while (*arg == ' ')
-			arg++;
-		retval = execute_command("%s", arg);
-		if (retval != 0) {
-			pr_error("\nfails: %s (return value %d)\n", arg, retval);
-			fastboot_fail("OEM system command failed");
-		} else {
-			pr_verbose("\nsucceeds: %s\n", arg);
-			fastboot_okay("");
-		}
 	} else if (strcmp(argv[0], CMD_SHOWTEXT) == 0) {
 		mui_show_text(1);
 		fastboot_okay("");

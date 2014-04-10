@@ -72,6 +72,7 @@
 #include "register.inc"
 
 #define CMD_SHOWTEXT		"showtext"
+#define CMD_HIDETEXT		"hidetext"
 #define CMD_LOCK		"lock"
 #define CMD_UNLOCK		"unlock"
 
@@ -601,6 +602,9 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 	} else if (strcmp(argv[0], CMD_SHOWTEXT) == 0) {
 		mui_show_text(1);
 		fastboot_okay("");
+	} else if (strcmp(argv[0], CMD_HIDETEXT) == 0) {
+		mui_show_text(0);
+		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
 		set_loader_lock(true);
 		fastboot_okay("");
@@ -718,10 +722,10 @@ void populate_status_info(void)
 	pr_debug("updating status text\n");
 	interface_info = get_network_interface_status();
 
-	infostring = xasprintf("Userfastboot %s for %s\n"
-		     "serialno: %s\n"
-		     "unlocked: %s\n"
-		     "  secure: %s\n"
+	infostring = xasprintf("Userfastboot %s for %s\n \n"
+		     " serialno: %s\n"
+		     " unlocked: %s\n"
+		     "   secure: %s\n \n"
 		     "%s", USERFASTBOOT_VERSION, DEVICE_NAME,
 		     fastboot_getvar("serialno"),
 		     fastboot_getvar("unlocked"),

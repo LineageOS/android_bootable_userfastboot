@@ -128,7 +128,7 @@ static void draw_background_locked(int icon)
     status_modified = 1;
 
     if (!show_text) {
-        gr_color(255, 0, 0, 255);
+        gr_color(167, 162, 195, 255);
         pthread_mutex_lock(&gTextMutex);
         for (i = 0; i <= info_row; i++)
             gr_text(0, CHAR_HEIGHT * (i + 1), infotext[i]);
@@ -169,7 +169,7 @@ static void draw_status_locked()
         gr_color(0, 0, 0, 255);
         gr_fill(0, dy - CHAR_HEIGHT, gr_fb_width(), dy + CHAR_HEIGHT);
 
-        gr_color(255, 255, 0, 255);
+        gr_color(187, 221, 230, 255);
         gr_text(dx, dy, status);
         status_modified = 0;
     }
@@ -255,7 +255,7 @@ static void draw_screen_locked(void)
             ++i;
         }
 
-        gr_color(255, 255, 0, 255);
+        gr_color(255, 255, 255, 255);
 
         pthread_mutex_lock(&gTextMutex);
         for (; i < text_rows; ++i) {

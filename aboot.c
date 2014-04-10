@@ -87,8 +87,6 @@ struct flash_target {
 Hashmap *flash_cmds;
 Hashmap *oem_cmds;
 
-void register_unlocked_commands(void);
-
 /*
 
 Unlockable Android devices must securely erase all user data prior to being
@@ -243,7 +241,6 @@ static int set_loader_lock(bool state)
 
 	if (state == false) {
 		if (!is_loader_locked()) {
-			register_unlocked_commands();
 			pr_info("Fastboot now unlocked\n");
 			fastboot_publish("unlocked", "yes");
 		} else {
@@ -252,9 +249,8 @@ static int set_loader_lock(bool state)
 		}
 	} else {
 		if (is_loader_locked()) {
-			fastboot_okay("");
-			/* Loader is now locked, let's get out of here! */
-			android_reboot(ANDROID_RB_RESTART, 0, 0);
+			pr_info("Fastboot now locked\n");
+			fastboot_publish("unlocked", "no");
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
 			return -1;
@@ -351,6 +347,11 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
 {
 	struct fstab_rec *vol;
 
+	if (is_loader_locked()) {
+		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
+		return;
+	}
+
 	vol = volume_for_name(part_name);
 	if (vol == NULL) {
 		fastboot_fail("unknown partition name");
@@ -432,6 +433,11 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 
 	void *data = NULL;
 	uint32_t magic = 0;
+
+	if (is_loader_locked()) {
+		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
+		return;
+	}
 
 	process_target(targetspec, &tgt);
 	pr_verbose("data size %u\n", sz);
@@ -574,12 +580,11 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		} else {
 			fastboot_okay("already unlocked");
 		}
-		return;
+		goto out;
 	}
 
 	if (locked) {
-		pr_error("device is locked, oem command %s not available\n", argv[0]);
-		fastboot_fail(argv[0]);
+		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
 		goto out;
 	}
 
@@ -598,9 +603,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
 		set_loader_lock(true);
-		/* If we get here, couldn't lock for some reason as
-		 * a successful lock initiates reboot */
-		fastboot_fail("oem lock");
+		fastboot_okay("");
 	} else {
 		fastboot_fail("unknown OEM command");
 	}
@@ -618,6 +621,11 @@ static void cmd_boot(char *arg, int *fd, unsigned sz)
 	struct bootloader_message bcb;
 	int success = 0;
 	void *data;
+
+	if (is_loader_locked()) {
+		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
+		return;
+	}
 
 	pr_status("Preparing boot image\n");
 
@@ -701,17 +709,6 @@ static void publish_from_prop(char *key, char *prop, char *dfl)
 	}
 }
 
-void register_unlocked_commands(void)
-{
-	fastboot_register("boot", cmd_boot);
-	fastboot_register("erase:", cmd_erase);
-	fastboot_register("flash:", cmd_flash);
-	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
-	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
-	aboot_register_oem_cmd("adbd", start_adbd);
-	register_userfastboot_plugins();
-}
-
 
 void populate_status_info(void)
 {
@@ -768,8 +765,15 @@ void aboot_register_commands(void)
 	 * if the user pressed the power button */
 	fastboot_publish("off-mode-charge", "0");
 
+	fastboot_register("boot", cmd_boot);
+	fastboot_register("erase:", cmd_erase);
+	fastboot_register("flash:", cmd_flash);
+	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
+	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
+	aboot_register_oem_cmd("adbd", start_adbd);
+	register_userfastboot_plugins();
+
 	if (!is_loader_locked()) {
-		register_unlocked_commands();
 		fastboot_publish("unlocked", "yes");
 	} else {
 		fastboot_publish("unlocked", "no");

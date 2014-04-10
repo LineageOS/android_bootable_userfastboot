@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, Google Inc.
+ * Copyright (c) 2014 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,82 +28,70 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#define LOG_TAG "userfastboot"
 
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <linux/input.h>
-#include <pthread.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <sys/statfs.h>
+#include <bootimg.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <sys/mount.h>
 
-#include <microui.h>
-#include <cutils/android_reboot.h>
-#include <cutils/klog.h>
-
-#include "aboot.h"
-#include "userfastboot_util.h"
-#include "userfastboot.h"
-#include "fastboot.h"
 #include "userfastboot_ui.h"
-#include "userfastboot_fstab.h"
-#include "network.h"
+#include "userfastboot_util.h"
 
-/* Synchronize operations which touch EMMC. Fastboot holds this any time it
- * executes a command. Threads which touch the disk should do likewise. */
-pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* We have a vague requirment to do sanity checks on any bootloader
+ * update operations. Since the userfastboot boot image is an extension
+ * of the bootloader (as least with respect to the functionality it provides)
+ * we check boot images too.
+ *
+ * These checks are very basic but as we get reports of people shooting
+ * themselves in the foot we can try to add cases to cover them. We
+ * really don't want to get too detailed or inflexible here; just try to
+ * make sure unintended images don't get flashed.
+ */
 
-struct selabel_handle *sehandle;
 
-int main(int argc, char **argv)
+/* Make sure this is a valid AOSP boot image */
+int bootimage_sanity_checks(unsigned char *data, size_t size)
 {
-	struct statfs buf;
-	int ret = 0;
-	/* Files written only read/writable by root */
-	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	struct boot_img_hdr *hdr = (struct boot_img_hdr *)data;
 
-	klog_init();
-	klog_set_level(7);
-
-	/* initialize libmicroui */
-#ifdef USE_GUI
-	mui_init();
-#endif
-	mui_set_background(BACKGROUND_ICON_INSTALLING);
-
-	struct selinux_opt seopts[] = {
-		{ SELABEL_OPT_PATH, "/file_contexts" }
-	};
-
-	sehandle = selabel_open(SELABEL_CTX_FILE, seopts, 1);
-
-	if (!sehandle) {
-		pr_error("Warning: No file_contexts\n");
+	if (size < sizeof(*hdr)) {
+		pr_error("image too small for even the boot image header!\n");
+		return -1;
 	}
 
-	load_volume_table();
-	aboot_register_commands();
-	start_interface_thread();
-
-	ret = statfs("/tmp", &buf);
-	if (!ret) {
-		unsigned long size = buf.f_bsize * buf.f_bfree;
-		fastboot_init(size);
-	} else {
-		pr_error("Error when acquiring tmpfs size:-%d\n", errno);
+	if (memcmp(hdr->magic, BOOT_MAGIC, BOOT_MAGIC_SIZE)) {
+		pr_error("bad boot image magic - is this an AOSP-style boot image?\n");
+		return -1;
 	}
 
-	/* Shouldn't get here */
-	exit(1);
+	pr_debug("boot image seems OK\n");
+	return 0;
+}
+
+/* Make sure this is a valid VFAT EFI System Partition image */
+int esp_sanity_checks(const char *path)
+{
+	struct stat sb;
+	int ret = -1;
+
+	if (mount_loopback(path, "vfat", "/mnt")) {
+		pr_error("Couldn't loopback mount bootloader image\n");
+		return -1;
+	}
+
+	/* At least one of these should be present */
+	if (stat("/mnt/EFI/BOOT/bootia32.efi", &sb) &&
+	    stat("/mnt/EFI/BOOT/bootx64.efi", &sb)) {
+		pr_error("Missing BOOT/EFI loaders!\n");
+		goto out;
+	}
+
+	pr_debug("bootloader image seems OK\n");
+	ret = 0;
+out:
+	umount("/mnt");
+	return ret;
 }
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround

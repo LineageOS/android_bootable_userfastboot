@@ -82,7 +82,10 @@ void mui_init();
 // so keep the output short and not too cryptic.
 void mui_print(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void mui_status(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
-void mui_infotext(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
+// Writes this text to the top-left corner of the screen. May contain
+// multiple lines of information. Multiple calls reset what is written.
+void mui_infotext(const char *info);
 
 // Set the icon (normally the only thing visible besides the progress bar).
 enum {

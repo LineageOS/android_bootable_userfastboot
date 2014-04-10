@@ -9,7 +9,9 @@ LOCAL_SRC_FILES := \
 	util.c \
 	userfastboot.c \
 	fstab.c \
-	gpt.c
+	gpt.c \
+	network.c \
+	sanity.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Werror
@@ -33,6 +35,7 @@ LOCAL_C_INCLUDES += external/zlib \
 		    bootable/iago/include \
 		    bootable/recovery \
 		    system/core/libsparse \
+		    system/core/mkbootimg \
 		    system/core/fs_mgr/include \
 		    system/core/libsparse/include \
 

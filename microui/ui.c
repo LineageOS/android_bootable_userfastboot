@@ -128,7 +128,7 @@ static void draw_background_locked(int icon)
     status_modified = 1;
 
     if (!show_text) {
-        gr_color(255, 0, 0, 255);
+        gr_color(167, 162, 195, 255);
         pthread_mutex_lock(&gTextMutex);
         for (i = 0; i <= info_row; i++)
             gr_text(0, CHAR_HEIGHT * (i + 1), infotext[i]);
@@ -169,7 +169,7 @@ static void draw_status_locked()
         gr_color(0, 0, 0, 255);
         gr_fill(0, dy - CHAR_HEIGHT, gr_fb_width(), dy + CHAR_HEIGHT);
 
-        gr_color(255, 255, 0, 255);
+        gr_color(187, 221, 230, 255);
         gr_text(dx, dy, status);
         status_modified = 0;
     }
@@ -255,7 +255,7 @@ static void draw_screen_locked(void)
             ++i;
         }
 
-        gr_color(255, 255, 0, 255);
+        gr_color(255, 255, 255, 255);
 
         pthread_mutex_lock(&gTextMutex);
         for (; i < text_rows; ++i) {
@@ -525,29 +525,30 @@ void mui_status(const char *fmt, ...)
     }
 }
 
-void mui_infotext(const char *fmt, ...)
+void mui_infotext(const char *infodata)
 {
-    char buf[256];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, 256, fmt, ap);
-    va_end(ap);
-
-    mui_print("%s", buf);
+    char *saveptr, *str, *idata, *token;
 
     if (!gInit)
         return;
 
-    remove_linefeeds(buf);
+    idata = strdup(infodata);
+    if (!idata)
+        return;
 
-    // This can get called before ui_init(), so be careful.
     pthread_mutex_lock(&gTextMutex);
-    if (info_row < MAX_ROWS) {
-	strncpy(infotext[info_row], buf, MAX_COLS);
+    info_row = 0;
+    for (str = idata, info_row = 0; info_row < MAX_ROWS; str = NULL, info_row++) {
+        token = strtok_r(str, "\n", &saveptr);
+        if (!token) {
+            infotext[info_row][0] = '\0';
+            break;
+        }
+        strncpy(infotext[info_row], token, MAX_COLS);
 	infotext[info_row][MAX_COLS - 1] = '\0';
-	info_row++;
     }
     pthread_mutex_unlock(&gTextMutex);
+    free(idata);
 
     pthread_mutex_lock(&gUpdateMutex);
     update_screen_locked();

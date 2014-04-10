@@ -78,6 +78,7 @@ void fastboot_register(const char *prefix,
 }
 
 static struct fastboot_var *varlist;
+static pthread_mutex_t varlist_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void fastboot_publish(const char *name, const char *value)
 {
@@ -86,18 +87,27 @@ void fastboot_publish(const char *name, const char *value)
 	var = xmalloc(sizeof(*var));
 	var->name = name;
 	var->value = value;
+	pthread_mutex_lock(&varlist_mutex);
 	var->next = varlist;
 	varlist = var;
+	pthread_mutex_unlock(&varlist_mutex);
 }
 
 const char *fastboot_getvar(const char *name)
 {
 	struct fastboot_var *var;
+	const char *ret = NULL;
 
-	for (var = varlist; var; var = var->next)
-		if (!strcmp(name, var->name))
-			return (var->value);
-	return NULL;
+	pthread_mutex_lock(&varlist_mutex);
+	for (var = varlist; var; var = var->next) {
+		if (!strcmp(name, var->name)) {
+			ret = var->value;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&varlist_mutex);
+
+	return ret;
 }
 
 static unsigned char buffer[4096];
@@ -236,7 +246,7 @@ void fastboot_info(const char *info)
 
 void fastboot_fail(const char *reason)
 {
-	pr_error("ack FAIL %s\n", reason);
+	pr_info("ack FAIL %s\n", reason);
 	fastboot_ack("FAIL", reason);
 	fastboot_state = STATE_COMPLETE;
 }
@@ -255,10 +265,12 @@ static void cmd_getvar(char *arg, int *fd, unsigned sz)
 	pr_debug("fastboot: cmd_getvar %s\n", arg);
 	if (!strcmp(arg, "all")) {
 		struct fastboot_var *var;
+		pthread_mutex_lock(&varlist_mutex);
 		for (var = varlist; var; var = var->next) {
 			char *line = xasprintf("%s: %s", var->name, var->value);
 			fastboot_info(line);
 		}
+		pthread_mutex_unlock(&varlist_mutex);
 		fastboot_okay("");
 	} else {
 		value = fastboot_getvar(arg);

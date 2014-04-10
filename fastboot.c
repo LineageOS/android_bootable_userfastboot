@@ -246,7 +246,7 @@ void fastboot_info(const char *info)
 
 void fastboot_fail(const char *reason)
 {
-	pr_error("ack FAIL %s\n", reason);
+	pr_info("ack FAIL %s\n", reason);
 	fastboot_ack("FAIL", reason);
 	fastboot_state = STATE_COMPLETE;
 }

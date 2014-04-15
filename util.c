@@ -548,10 +548,15 @@ int erase_partition(struct fstab_rec *vol)
 	 * has a very long setup/teardown phase which makes the entire operation
 	 * much slower if we call multiple times on small areas */
 	disk_name = get_disk_sysfs(vol->blk_device);
-	if (!disk_name)
+	if (!disk_name) {
+		pr_error("Couldn't get disk major number for %s\n", vol->blk_device);
 		goto out;
-	if (read_sysfs_int64(&max_bytes, "%s/queue/discard_max_bytes", disk_name))
+	}
+
+	if (read_sysfs_int64(&max_bytes, "%s/queue/discard_max_bytes", disk_name)) {
+		pr_error("Couldn't read %s/queue/discard_max_bytes\n", disk_name);
 		goto out;
+	}
 
 	if (max_bytes && disk_size > max_bytes) {
 		mui_show_progress(1.0, 0);
@@ -564,8 +569,10 @@ int erase_partition(struct fstab_rec *vol)
 		mui_set_progress((float)pos / (float)disk_size);
 		if (pos + increment > disk_size)
 			increment = disk_size - pos;
-		if (erase_range(fd, pos, increment))
+		if (erase_range(fd, pos, increment)) {
+			pr_error("Disk erase operation failed\n");
 			goto out;
+		}
 		pos += increment;
 	}
 	ret = 0;

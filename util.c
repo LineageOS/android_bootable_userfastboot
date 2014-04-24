@@ -458,9 +458,35 @@ enum erase_type {
 	ZERO
 };
 
+/* more or less arbitrary value */
+#define ZEROES_ARRAY_SZ	4096U
+
+static int erase_range_zero(int fd, uint64_t start, uint64_t len)
+{
+	char zeroes[ZEROES_ARRAY_SZ];
+
+	memset(zeroes, 0, ZEROES_ARRAY_SZ);
+
+	if (lseek64(fd, start, SEEK_SET) < 0) {
+		pr_perror("lseek64");
+		return -1;
+	}
+
+	while (len) {
+		ssize_t ret;
+
+		ret = write(fd, zeroes, min(len, ZEROES_ARRAY_SZ));
+		if (ret < 0) {
+			pr_perror("write");
+			return -1;
+		}
+		len -= ret;
+	}
+	return 0;
+}
+
 static int erase_range(int fd, uint64_t start, uint64_t len)
 {
-	char zeroes[4096];
 	uint64_t range[2];
 	int ret;
 	static enum erase_type etype = SECDISCARD;
@@ -489,21 +515,7 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		etype = ZERO;
 		/* Fall through */
 	case ZERO:
-		if (lseek64(fd, start, SEEK_SET) < 0) {
-			pr_perror("lseek64");
-			return -1;
-		}
-
-		while (len) {
-			ssize_t ret;
-
-			ret = write(fd, zeroes, min(len, sizeof(zeroes)));
-			if (ret < 0) {
-				pr_perror("write");
-				return -1;
-			}
-			len -= ret;
-		}
+		return erase_range_zero(fd, start, len);
 	}
 
 	return 0;
@@ -554,7 +566,11 @@ int erase_partition(struct fstab_rec *vol)
 	}
 
 	if (read_sysfs_int64(&max_bytes, "%s/queue/discard_max_bytes", disk_name)) {
-		pr_error("Couldn't read %s/queue/discard_max_bytes\n", disk_name);
+		pr_error("Couldn't read %s/queue/discard_max_bytes, is kernel configured correctly?\n",
+				disk_name);
+		pr_info("Fallback to manual zero of partition, this can take a LONG time\n");
+		ret = erase_range_zero(fd, 0, disk_size);
+		mui_show_text(0);
 		goto out;
 	}
 

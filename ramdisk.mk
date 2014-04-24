@@ -130,15 +130,24 @@ $(ufb_out)/ufb-ramdisk.zip: \
 
 INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-ramdisk.zip $(ufb_out)/ufb-cmdline
 
+ifneq ($(USERFASTBOOT_2NDBOOTLOADER),)
+$(ufb_out)/ufb-second: $(USERFASTBOOT_2NDBOOTLOADER)
+	$(copy-file-to-new-target)
+
+INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-second
+endif
+
 # Create a standard Android bootimage using the regular kernel and the
 # userfastboot ramdisk.
 $(USERFASTBOOT_BOOTIMAGE): \
 		$(INSTALLED_KERNEL_TARGET) \
 		$(USERFASTBOOT_RAMDISK) \
 		$(BOARD_KERNEL_CMDLINE_FILE) \
+		$(USERFASTBOOT_2NDBOOTLOADER) \
 		$(MKBOOTIMG) \
 
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
+		     $(addprefix --second ,$(USERFASTBOOT_2NDBOOTLOADER)) \
 		     --ramdisk $(USERFASTBOOT_RAMDISK) \
 		     --cmdline "$(USERFASTBOOT_CMDLINE)" \
 		     $(BOARD_MKBOOTIMG_ARGS) \

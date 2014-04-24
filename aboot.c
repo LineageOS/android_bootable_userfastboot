@@ -45,6 +45,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <linux/input.h>
 
 #include <cutils/android_reboot.h>
 #include <cutils/hashmap.h>
@@ -229,6 +230,69 @@ static bool is_secure_boot_enabled(void)
 	return false;
 }
 
+
+static bool confirm_oem_unlock(void)
+{
+	int chosen_item = -1;
+	int selected = 1;
+	bool result = false;
+
+	char *headers[] = {
+		"**** Unlock bootloader? ****",
+		"",
+		"If you unlock the bootloader, you will be able to install custom operating",
+		"system software on this device. A custom OS is not subject to the same",
+		"testing as the original OS, and can cause your device and installed",
+		"applications to stop working properly. To prevent unauthorized access to your",
+		"personal data, unlocking the bootloader will also delete all personal data",
+		"from your device (a 'factory data reset').",
+		"",
+		"Press the Volume Up/Down to select Yes or No. Then press the Power button.",
+		"",
+		NULL };
+
+	char *items[] = {
+		"Yes: Unlock bootloader",
+		"No: Do not unlock bootloader",
+		NULL };
+
+	mui_clear_key_queue();
+	mui_start_menu(headers, items, selected);
+
+	while (chosen_item < 0) {
+		int key = mui_wait_key();
+
+		pr_debug("got key event %d\n", key);
+		switch (key) {
+		case -1:
+			pr_info("OEM unlock prompt timed out\n");
+			goto out;
+
+		case KEY_UP:
+		case KEY_VOLUMEUP:
+			--selected;
+			selected = mui_menu_select(selected);
+			break;
+
+		case KEY_DOWN:
+		case KEY_VOLUMEDOWN:
+			++selected;
+			selected = mui_menu_select(selected);
+			break;
+
+		case KEY_POWER:
+		case KEY_ENTER:
+			if (selected == 0)
+				result = true;
+			goto out;
+		}
+	}
+out:
+	mui_end_menu();
+	return result;
+}
+
+
 static int set_loader_lock(bool state)
 {
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
@@ -249,8 +313,9 @@ static int set_loader_lock(bool state)
 		 * actually exists. If it doesn't the disk is unpartitioned
 		 * and we can proceed */
 		if (is_valid_blkdev(vol->blk_device)) {
-			/* TODO Inform the user that a data wipe is required and
-			 * get UI confirmation that they are OK with it */
+			if (!confirm_oem_unlock())
+				return -1;
+
 			pr_status("Userdata erase required, this can take a while...\n");
 			wiped = true;
 			if (erase_partition(vol)) {

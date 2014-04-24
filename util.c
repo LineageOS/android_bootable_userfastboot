@@ -862,6 +862,16 @@ int read_sysfs_int64(int64_t *val, const char *fmt, ...)
 	return 0;
 }
 
+char *get_dmi_data(const char *node)
+{
+	char *ret;
+
+	ret = read_sysfs("/sys/devices/virtual/dmi/id/%s", node);
+	if (!ret)
+		ret = xstrdup("unknown");
+
+	return ret;
+}
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
  */

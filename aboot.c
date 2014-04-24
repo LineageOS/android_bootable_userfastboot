@@ -761,11 +761,16 @@ void populate_status_info(void)
 	interface_info = get_network_interface_status();
 
 	infostring = xasprintf("Userfastboot %s for %s\n \n"
+		     "        firmware: %s\n"
+		     "           board: %s\n"
 		     "        serialno: %s\n"
 		     "        unlocked: %s\n"
 		     "   secure images: %s\n"
 		     "     secure boot: %s\n"
-		     "\n%s", USERFASTBOOT_VERSION, DEVICE_NAME,
+		     " \n%s", USERFASTBOOT_VERSION,
+		     fastboot_getvar("product"),
+		     fastboot_getvar("firmware"),
+		     fastboot_getvar("board"),
 		     fastboot_getvar("serialno"),
 		     fastboot_getvar("unlocked"),
 		     fastboot_getvar("secure"),
@@ -779,12 +784,15 @@ void populate_status_info(void)
 
 void aboot_register_commands(void)
 {
+	char *bios_vendor, *bios_version, *bios_string;
+	char *board_vendor, *board_version, *board_name, *board_string;
+
 	fastboot_register("oem", cmd_oem);
 	fastboot_register("reboot", cmd_reboot);
 	fastboot_register("reboot-bootloader", cmd_reboot_bl);
 	fastboot_register("continue", cmd_reboot);
 
-	fastboot_publish("product", DEVICE_NAME);
+	fastboot_publish("product", get_dmi_data("product_name"));
 	fastboot_publish("kernel", "userfastboot");
 	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
 	fastboot_publish("version-baseband", "N/A");
@@ -802,6 +810,22 @@ void aboot_register_commands(void)
 	fastboot_publish("secure", "no");
 
 	fastboot_publish("secureboot", is_secure_boot_enabled() ? "yes" : "no");
+
+	bios_vendor = get_dmi_data("bios_vendor");
+	bios_version = get_dmi_data("bios_version");
+	bios_string = xasprintf("%s %s", bios_vendor, bios_version);
+	fastboot_publish("firmware", bios_string);
+	free(bios_vendor);
+	free(bios_version);
+
+	board_vendor = get_dmi_data("board_vendor");
+	board_version = get_dmi_data("board_version");
+	board_name = get_dmi_data("board_name");
+	board_string = xasprintf("%s %s %s", board_vendor, board_name, board_version);
+	fastboot_publish("board", board_string);
+	free(board_vendor);
+	free(board_version);
+	free(board_name);
 
 	/* At this time we don't have a special 'charge mode',
 	 * which is entered when power is applied.

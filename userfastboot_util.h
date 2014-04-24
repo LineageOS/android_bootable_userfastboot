@@ -26,6 +26,7 @@ void import_kernel_cmdline(void (*callback)(char *name));
 int is_valid_blkdev(const char *node);
 char *read_sysfs(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 int read_sysfs_int64(int64_t *val, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
+char *get_dmi_data(const char *node);
 
 /* Fails assertion if memory allocations fail */
 char *xstrdup(const char *s);

@@ -37,6 +37,7 @@ ufb_modules := \
 	netcfg \
 	init.utilitynet.sh \
 	dhcpcd \
+	pstore-clean
 
 ufb_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(ufb_modules)))
 

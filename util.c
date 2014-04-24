@@ -346,7 +346,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 			type, mountpoint);
 	ret = mount(device, mountpoint, type, 0, "");
 	if (ret && errno != EBUSY) {
-		pr_debug("mount: %s", strerror(errno));
+		pr_info("mount: %s (%s): %s\n", device, type, strerror(errno));
 		return -1;
 	}
 	return 0;

@@ -80,6 +80,10 @@
 	EFI_GUID(0x1ac80a82, 0x4f0c, 0x456b, 0x9a99, 0xde, 0xbe, 0xb4, 0x31, 0xfc, 0xc1);
 #define OEM_LOCK_VAR		"OEMLock"
 
+#define EFI_GLOBAL_VARIABLE \
+	EFI_GUID(0x8BE4DF61, 0x93CA, 0x11d2, 0xAA0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C);
+#define SECURE_BOOT_VAR		"SecureBoot"
+
 struct flash_target {
 	char *name;
 	Hashmap *params;
@@ -200,6 +204,30 @@ static bool is_loader_locked(void)
 	return true;
 }
 
+
+static bool is_secure_boot_enabled(void)
+{
+	int ret;
+	uint32_t attributes;
+	char *data;
+	size_t dsize;
+	efi_guid_t global_guid = EFI_GLOBAL_VARIABLE;
+
+	ret = efi_get_variable(global_guid, SECURE_BOOT_VAR, (uint8_t **)&data,
+			&dsize, &attributes);
+	if (ret) {
+		pr_debug("Couldn't read SecureBootk\n");
+		return false;
+	}
+
+	if (!dsize)
+		return false;
+
+	if (data[0] == 1)
+		return true;
+
+	return false;
+}
 
 static int set_loader_lock(bool state)
 {
@@ -642,15 +670,18 @@ static void cmd_boot(char *arg, int *fd, unsigned sz)
 
 	vol_bootloader = volume_for_name("bootloader");
 	if (vol_bootloader == NULL) {
+		pr_error("/bootloader not defined in fstab\n");
 		fastboot_fail("can't find bootloader partition");
 		return;
 	}
 	vol_misc = volume_for_name("misc");
 	if (vol_misc == NULL) {
+		pr_error("/misc not defined in fstab\n");
 		fastboot_fail("can't find misc partition");
 		return;
 	}
 	if (mount_partition(vol_bootloader)) {
+		pr_error("Couldn't mount bootloader partition!\n");
 		fastboot_fail("couldn't mount bootloader partition");
 		return;
 	}
@@ -730,13 +761,15 @@ void populate_status_info(void)
 	interface_info = get_network_interface_status();
 
 	infostring = xasprintf("Userfastboot %s for %s\n \n"
-		     " serialno: %s\n"
-		     " unlocked: %s\n"
-		     "   secure: %s\n \n"
-		     "%s", USERFASTBOOT_VERSION, DEVICE_NAME,
+		     "        serialno: %s\n"
+		     "        unlocked: %s\n"
+		     "   secure images: %s\n"
+		     "     secure boot: %s\n"
+		     "\n%s", USERFASTBOOT_VERSION, DEVICE_NAME,
 		     fastboot_getvar("serialno"),
 		     fastboot_getvar("unlocked"),
 		     fastboot_getvar("secure"),
+		     fastboot_getvar("secureboot"),
 		     interface_info);
 	pr_debug("%s", infostring);
 	mui_infotext(infostring);
@@ -767,6 +800,8 @@ void aboot_register_commands(void)
 
 	/* Currently we don't require signatures on images */
 	fastboot_publish("secure", "no");
+
+	fastboot_publish("secureboot", is_secure_boot_enabled() ? "yes" : "no");
 
 	/* At this time we don't have a special 'charge mode',
 	 * which is entered when power is applied.

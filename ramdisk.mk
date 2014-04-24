@@ -131,7 +131,7 @@ $(ufb_out)/ufb-ramdisk.zip: \
 INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-ramdisk.zip $(ufb_out)/ufb-cmdline
 
 ifneq ($(USERFASTBOOT_2NDBOOTLOADER),)
-$(ufb_out)/ufb-second: $(USERFASTBOOT_2NDBOOTLOADER)
+$(ufb_out)/ufb-second: $(USERFASTBOOT_2NDBOOTLOADER) | $(ACP)
 	$(copy-file-to-new-target)
 
 INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-second

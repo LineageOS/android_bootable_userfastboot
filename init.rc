@@ -55,3 +55,7 @@ service console /system/bin/sh
 on property:ro.debuggable=1
     start console
 
+service pstore-clean /system/bin/pstore-clean
+    default
+    oneshot
+

@@ -346,7 +346,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 			type, mountpoint);
 	ret = mount(device, mountpoint, type, 0, "");
 	if (ret && errno != EBUSY) {
-		pr_debug("mount: %s", strerror(errno));
+		pr_info("mount: %s (%s): %s\n", device, type, strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -458,9 +458,35 @@ enum erase_type {
 	ZERO
 };
 
+/* more or less arbitrary value */
+#define ZEROES_ARRAY_SZ	4096U
+
+static int erase_range_zero(int fd, uint64_t start, uint64_t len)
+{
+	char zeroes[ZEROES_ARRAY_SZ];
+
+	memset(zeroes, 0, ZEROES_ARRAY_SZ);
+
+	if (lseek64(fd, start, SEEK_SET) < 0) {
+		pr_perror("lseek64");
+		return -1;
+	}
+
+	while (len) {
+		ssize_t ret;
+
+		ret = write(fd, zeroes, min(len, ZEROES_ARRAY_SZ));
+		if (ret < 0) {
+			pr_perror("write");
+			return -1;
+		}
+		len -= ret;
+	}
+	return 0;
+}
+
 static int erase_range(int fd, uint64_t start, uint64_t len)
 {
-	char zeroes[4096];
 	uint64_t range[2];
 	int ret;
 	static enum erase_type etype = SECDISCARD;
@@ -489,21 +515,7 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		etype = ZERO;
 		/* Fall through */
 	case ZERO:
-		if (lseek64(fd, start, SEEK_SET) < 0) {
-			pr_perror("lseek64");
-			return -1;
-		}
-
-		while (len) {
-			ssize_t ret;
-
-			ret = write(fd, zeroes, min(len, sizeof(zeroes)));
-			if (ret < 0) {
-				pr_perror("write");
-				return -1;
-			}
-			len -= ret;
-		}
+		return erase_range_zero(fd, start, len);
 	}
 
 	return 0;
@@ -548,10 +560,19 @@ int erase_partition(struct fstab_rec *vol)
 	 * has a very long setup/teardown phase which makes the entire operation
 	 * much slower if we call multiple times on small areas */
 	disk_name = get_disk_sysfs(vol->blk_device);
-	if (!disk_name)
+	if (!disk_name) {
+		pr_error("Couldn't get disk major number for %s\n", vol->blk_device);
 		goto out;
-	if (read_sysfs_int64(&max_bytes, "%s/queue/discard_max_bytes", disk_name))
+	}
+
+	if (read_sysfs_int64(&max_bytes, "%s/queue/discard_max_bytes", disk_name)) {
+		pr_error("Couldn't read %s/queue/discard_max_bytes, is kernel configured correctly?\n",
+				disk_name);
+		pr_info("Fallback to manual zero of partition, this can take a LONG time\n");
+		ret = erase_range_zero(fd, 0, disk_size);
+		mui_show_text(0);
 		goto out;
+	}
 
 	if (max_bytes && disk_size > max_bytes) {
 		mui_show_progress(1.0, 0);
@@ -564,8 +585,10 @@ int erase_partition(struct fstab_rec *vol)
 		mui_set_progress((float)pos / (float)disk_size);
 		if (pos + increment > disk_size)
 			increment = disk_size - pos;
-		if (erase_range(fd, pos, increment))
+		if (erase_range(fd, pos, increment)) {
+			pr_error("Disk erase operation failed\n");
 			goto out;
+		}
 		pos += increment;
 	}
 	ret = 0;
@@ -839,6 +862,16 @@ int read_sysfs_int64(int64_t *val, const char *fmt, ...)
 	return 0;
 }
 
+char *get_dmi_data(const char *node)
+{
+	char *ret;
+
+	ret = read_sysfs("/sys/devices/virtual/dmi/id/%s", node);
+	if (!ret)
+		ret = xstrdup("unknown");
+
+	return ret;
+}
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
  */

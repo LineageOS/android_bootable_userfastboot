@@ -37,6 +37,7 @@ ufb_modules := \
 	netcfg \
 	init.utilitynet.sh \
 	dhcpcd \
+	pstore-clean
 
 ufb_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(ufb_modules)))
 
@@ -129,15 +130,24 @@ $(ufb_out)/ufb-ramdisk.zip: \
 
 INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-ramdisk.zip $(ufb_out)/ufb-cmdline
 
+ifneq ($(USERFASTBOOT_2NDBOOTLOADER),)
+$(ufb_out)/ufb-second: $(USERFASTBOOT_2NDBOOTLOADER) | $(ACP)
+	$(copy-file-to-new-target)
+
+INSTALLED_RADIOIMAGE_TARGET += $(ufb_out)/ufb-second
+endif
+
 # Create a standard Android bootimage using the regular kernel and the
 # userfastboot ramdisk.
 $(USERFASTBOOT_BOOTIMAGE): \
 		$(INSTALLED_KERNEL_TARGET) \
 		$(USERFASTBOOT_RAMDISK) \
 		$(BOARD_KERNEL_CMDLINE_FILE) \
+		$(USERFASTBOOT_2NDBOOTLOADER) \
 		$(MKBOOTIMG) \
 
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
+		     $(addprefix --second ,$(USERFASTBOOT_2NDBOOTLOADER)) \
 		     --ramdisk $(USERFASTBOOT_RAMDISK) \
 		     --cmdline "$(USERFASTBOOT_CMDLINE)" \
 		     $(BOARD_MKBOOTIMG_ARGS) \
@@ -150,47 +160,3 @@ userfastboot-ramdisk: $(USERFASTBOOT_RAMDISK)
 .PHONY: userfastboot-bootimage
 userfastboot-bootimage: $(USERFASTBOOT_BOOTIMAGE)
 
-ifeq ($(TARGET_UEFI_ARCH),i386)
-efi_default_name := bootia32.efi
-else
-efi_default_name := bootx64.efi
-endif
-
-ufb_usb_fs_image := $(PRODUCT_OUT)/fastboot-usb.img
-ufb_usb_efi_bins := $(BOARD_EFI_MODULES)
-
-ufb_loader_configs := \
-	$(ufb_src_dir)/loader/1fastboot.conf \
-	$(ufb_src_dir)/loader/2lockdown.conf \
-	$(ufb_src_dir)/loader/loader.conf
-
-ufb_usb_rootfs := $(ufb_out)/usbroot
-ufb_usb_efi_dir := $(ufb_usb_rootfs)/EFI/BOOT/
-ufb_usb_efi_loader := $(ufb_usb_rootfs)/loader
-
-$(ufb_usb_fs_image): \
-		$(ufb_loader_configs) \
-		$(ufb_src_dir)/make_vfatfs \
-		$(USERFASTBOOT_BOOTIMAGE) \
-		$(ufb_usb_efi_bins) \
-		$(ufb_src_dir)/loader/loader.conf \
-		| $(ACP) \
-
-	$(hide) rm -rf $(ufb_usb_rootfs)
-	$(hide) mkdir -p $(ufb_usb_rootfs)
-	$(hide) $(ACP) -f $(USERFASTBOOT_BOOTIMAGE) $(ufb_usb_rootfs)/fastboot.img
-	$(hide) mkdir -p $(ufb_usb_efi_dir)
-	$(hide) $(ACP) $(filter %/shim.efi,$(BOARD_EFI_MODULES)) $(ufb_usb_efi_dir)/$(efi_default_name)
-	$(hide) $(ACP) $(ufb_usb_efi_bins) $(ufb_usb_efi_dir)
-	$(hide) mkdir -p $(ufb_usb_efi_loader)/entries
-	$(hide) $(ACP) $(ufb_src_dir)/loader/loader.conf $(ufb_usb_efi_loader)/
-	$(hide) $(ACP) $(ufb_loader_configs) $(ufb_usb_efi_loader)/entries/
-	$(hide) $(ufb_src_dir)/make_vfatfs $(ufb_usb_rootfs) $@
-
-.PHONY: userfastboot-usb
-userfastboot-usb: $(ufb_usb_fs_image)
-
-# Build this when 'make' is run with no args
-droidcore: $(ufb_usb_fs_image)
-
-$(call dist-for-goals,droidcore,$(ufb_usb_fs_image):$(TARGET_PRODUCT)-fastboot-usb-$(FILE_NAME_TAG).img)

@@ -857,7 +857,8 @@ void aboot_register_commands(void)
 	fastboot_register("reboot-bootloader", cmd_reboot_bl);
 	fastboot_register("continue", cmd_reboot);
 
-	fastboot_publish("product", get_dmi_data("product_name"));
+	fastboot_publish("product", DEVICE_NAME);
+	fastboot_publish("product-name", get_dmi_data("product_name"));
 	fastboot_publish("kernel", "userfastboot");
 	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
 	fastboot_publish("version-baseband", "N/A");

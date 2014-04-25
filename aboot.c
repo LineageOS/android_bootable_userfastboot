@@ -46,6 +46,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <linux/input.h>
+#include <sys/utsname.h>
 
 #include <cutils/android_reboot.h>
 #include <cutils/hashmap.h>
@@ -826,6 +827,7 @@ void populate_status_info(void)
 	interface_info = get_network_interface_status();
 
 	infostring = xasprintf("Userfastboot %s for %s\n \n"
+		     "          kernel: %s\n"
 		     "        firmware: %s\n"
 		     "           board: %s\n"
 		     "        serialno: %s\n"
@@ -834,6 +836,7 @@ void populate_status_info(void)
 		     "     secure boot: %s\n"
 		     " \n%s", USERFASTBOOT_VERSION,
 		     fastboot_getvar("product"),
+		     fastboot_getvar("kernel"),
 		     fastboot_getvar("firmware"),
 		     fastboot_getvar("board"),
 		     fastboot_getvar("serialno"),
@@ -851,6 +854,7 @@ void aboot_register_commands(void)
 {
 	char *bios_vendor, *bios_version, *bios_string;
 	char *board_vendor, *board_version, *board_name, *board_string;
+	struct utsname uts;
 
 	fastboot_register("oem", cmd_oem);
 	fastboot_register("reboot", cmd_reboot);
@@ -859,7 +863,6 @@ void aboot_register_commands(void)
 
 	fastboot_publish("product", DEVICE_NAME);
 	fastboot_publish("product-name", get_dmi_data("product_name"));
-	fastboot_publish("kernel", "userfastboot");
 	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
 	fastboot_publish("version-baseband", "N/A");
 	publish_from_prop("serialno", "ro.serialno", "unknown");
@@ -892,6 +895,13 @@ void aboot_register_commands(void)
 	free(board_vendor);
 	free(board_version);
 	free(board_name);
+
+	if (!uname(&uts))
+		fastboot_publish("kernel", xasprintf("%s %s %s",
+				uts.release, uts.version, uts.machine));
+	else
+		fastboot_publish("kernel", "unknown");
+
 
 	/* At this time we don't have a special 'charge mode',
 	 * which is entered when power is applied.

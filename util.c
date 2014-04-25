@@ -433,9 +433,14 @@ int mount_partition(struct fstab_rec *vol)
 {
 	char *mountpoint;
 	int status;
+	char *fs_type;
 
 	mountpoint = xasprintf("/mnt/%s", vol->mount_point);
-	status = mount_partition_device(vol->blk_device, vol->fs_type, mountpoint);
+	fs_type = vol->fs_type;
+	if (!strcmp(fs_type, "emmc"))
+		fs_type = "vfat";
+
+	status = mount_partition_device(vol->blk_device, fs_type, mountpoint);
 	free(mountpoint);
 
 	return status;

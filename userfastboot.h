@@ -31,7 +31,7 @@ extern pthread_mutex_t action_mutex;
 extern char *g_update_location;
 
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define USERFASTBOOT_VERSION       "05.05"
+#define USERFASTBOOT_VERSION       "05.06-pre"
 
 /* struct fstab_rec entry in recovery.fstab for the SD card */
 #define SDCARD_VOLUME		"/sdcard"

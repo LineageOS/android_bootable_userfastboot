@@ -589,14 +589,12 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		}
 	}
 
-#if 0
 	if (!strcmp(targetspec, "bootloader")) {
 		if (esp_sanity_checks(FASTBOOT_DOWNLOAD_TMP_FILE)) {
 			fastboot_fail("malformed bootloader image");
 			goto out_map;
 		}
 	}
-#endif
 
 	pr_debug("target '%s' volume size: %" PRIu64 " MiB\n", targetspec, vsize >> 20);
 

@@ -355,19 +355,22 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 
 int mount_loopback(const char *path, const char *type, char *mountpoint)
 {
-	int ret, file_fd, loop_fd, i;
+	int ret, i;
+	int file_fd = -1;
+	int loop_fd = -1;
 	struct loop_info info;
+	char tmp[PATH_MAX];
 
 	ret = mkdir(mountpoint, 0777);
 	if (ret && errno != EEXIST) {
 		pr_perror("mkdir");
-		return -1;
+		goto out_error;
 	}
 
 	file_fd = open(path, O_RDONLY);
 	if (file_fd < 0) {
 		pr_perror("open");
-		return -1;
+		goto out_error;
 	}
 
 	for (i = 0; ; i++) {
@@ -378,28 +381,54 @@ int mount_loopback(const char *path, const char *type, char *mountpoint)
 		if (loop_fd < 0) {
 			pr_error("Couldn't open a loop device %s\n", tmp);
 			pr_perror("open");
-			close(file_fd);
-			return -1;
+			goto out_error;
 		}
 
-		if (ioctl(loop_fd, LOOP_GET_STATUS, &info) < 0 && errno == ENXIO) {
-			if (ioctl(loop_fd, LOOP_SET_FD, file_fd) >= 0) {
-				close(file_fd);
-
-				if (mount(tmp, mountpoint, type, MS_RDONLY, NULL) < 0) {
-					pr_error("loopback mount failed\n");
-					pr_perror("mount");
-					ioctl(loop_fd, LOOP_CLR_FD, 0);
-					close(loop_fd);
-					return -1;
-				}
-
-				close(loop_fd);
-				return 0; /* success */
-			}
-		}
-		close(loop_fd);
+		if (ioctl(loop_fd, LOOP_GET_STATUS, &info) < 0 && errno == ENXIO)
+			break;
 	}
+
+	ret = ioctl(loop_fd, LOOP_SET_FD, file_fd);
+	if (ret < 0) {
+		pr_perror("LOOP_SET_FD");
+		goto out_error;
+	}
+
+	ret = mount(tmp, mountpoint, type, MS_RDONLY, NULL);
+	if (ret < 0) {
+		pr_error("loopback mount failed\n");
+		pr_perror("mount");
+		ioctl(loop_fd, LOOP_CLR_FD, 0);
+		goto out_error;
+	}
+
+	close(file_fd);
+	return loop_fd;;
+out_error:
+	if (file_fd >= 0)
+		close(file_fd);
+
+	if (loop_fd >= 0)
+		close(loop_fd);
+	return -1;
+}
+
+int unmount_loopback(int loop_fd, const char *mountpoint)
+{
+	int ret;
+
+	if (umount(mountpoint)) {
+		pr_perror("umount");
+		return -1;
+	}
+
+	ret = ioctl(loop_fd, LOOP_CLR_FD, 0);
+	if (ret < 0)
+		pr_perror("LOOP_CLR_FD");
+
+	close(loop_fd);
+
+	return (ret < 0);
 }
 
 int get_volume_size(struct fstab_rec *vol, uint64_t *sz)

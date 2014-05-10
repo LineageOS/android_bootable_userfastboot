@@ -77,6 +77,7 @@
 #define CMD_HIDETEXT		"hidetext"
 #define CMD_LOCK		"lock"
 #define CMD_UNLOCK		"unlock"
+#define CMD_UNLOCK_NOCONFIRM	"unlock-noconfirm"
 
 #define FASTBOOT_GUID \
 	EFI_GUID(0x1ac80a82, 0x4f0c, 0x456b, 0x9a99, 0xde, 0xbe, 0xb4, 0x31, 0xfc, 0xc1);
@@ -294,7 +295,7 @@ out:
 }
 
 
-static int set_loader_lock(bool state)
+static int set_loader_lock(bool state, bool skip_confirmation)
 {
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	int ret;
@@ -314,7 +315,7 @@ static int set_loader_lock(bool state)
 		 * actually exists. If it doesn't the disk is unpartitioned
 		 * and we can proceed */
 		if (is_valid_blkdev(vol->blk_device)) {
-			if (!confirm_oem_unlock())
+			if (!skip_confirmation && !confirm_oem_unlock())
 				return -1;
 
 			pr_status("Userdata erase required, this can take a while...\n");
@@ -671,9 +672,10 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 
 	locked = is_loader_locked();
 
-	if (strcmp(argv[0], CMD_UNLOCK) == 0) {
+	if (!strcmp(argv[0], CMD_UNLOCK) || !strcmp(argv[0], CMD_UNLOCK_NOCONFIRM)) {
 		if (locked) {
-			if (set_loader_lock(false)) {
+			if (set_loader_lock(false,
+					!strcmp(argv[0], CMD_UNLOCK_NOCONFIRM))) {
 				pr_error("Couldn't unlock!\n");
 				fastboot_fail("oem unlock");
 			} else {
@@ -707,7 +709,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		mui_show_text(0);
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
-		set_loader_lock(true);
+		set_loader_lock(true, false);
 		fastboot_okay("");
 	} else {
 		fastboot_fail("unknown OEM command");

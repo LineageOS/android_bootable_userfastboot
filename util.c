@@ -525,6 +525,7 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 	int ret;
 	static enum erase_type etype = SECDISCARD;
 
+	pr_debug("erasing offset %" PRIu64 " len %" PRIu64 "\n", start, len);
 	switch (etype) {
 	case SECDISCARD:
 		range[0] = start;
@@ -566,6 +567,7 @@ static char *get_disk_sysfs(char *node)
 	return xasprintf("/sys/dev/block/%d:0/", major(sb.st_rdev));
 }
 
+#define MAX_INCREMENT 5LL * 1024LL * 1024LL * 1024LL
 
 int erase_partition(struct fstab_rec *vol)
 {
@@ -607,12 +609,18 @@ int erase_partition(struct fstab_rec *vol)
 		mui_show_text(0);
 		goto out;
 	}
+	pr_debug("max bytes: %" PRId64"\n", max_bytes);
 
-	if (max_bytes && disk_size > max_bytes) {
-		mui_show_progress(1.0, 0);
+
+	if (max_bytes && disk_size > max_bytes)
 		increment = max_bytes;
-	} else
+	else
 		increment = disk_size;
+
+	increment = min(increment, MAX_INCREMENT);
+
+	if (increment != disk_size)
+		mui_show_progress(1.0, 0);
 
 	pos = 0;
 	while (pos < disk_size) {

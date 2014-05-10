@@ -346,7 +346,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 			type, mountpoint);
 	ret = mount(device, mountpoint, type, 0, "");
 	if (ret && errno != EBUSY) {
-		pr_info("mount: %s (%s): %s\n", device, type, strerror(errno));
+		pr_debug("mount: %s (%s): %s\n", device, type, strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -355,19 +355,22 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 
 int mount_loopback(const char *path, const char *type, char *mountpoint)
 {
-	int ret, file_fd, loop_fd, i;
+	int ret, i;
+	int file_fd = -1;
+	int loop_fd = -1;
 	struct loop_info info;
+	char tmp[PATH_MAX];
 
 	ret = mkdir(mountpoint, 0777);
 	if (ret && errno != EEXIST) {
 		pr_perror("mkdir");
-		return -1;
+		goto out_error;
 	}
 
 	file_fd = open(path, O_RDONLY);
 	if (file_fd < 0) {
 		pr_perror("open");
-		return -1;
+		goto out_error;
 	}
 
 	for (i = 0; ; i++) {
@@ -378,28 +381,54 @@ int mount_loopback(const char *path, const char *type, char *mountpoint)
 		if (loop_fd < 0) {
 			pr_error("Couldn't open a loop device %s\n", tmp);
 			pr_perror("open");
-			close(file_fd);
-			return -1;
+			goto out_error;
 		}
 
-		if (ioctl(loop_fd, LOOP_GET_STATUS, &info) < 0 && errno == ENXIO) {
-			if (ioctl(loop_fd, LOOP_SET_FD, file_fd) >= 0) {
-				close(file_fd);
-
-				if (mount(tmp, mountpoint, type, MS_RDONLY, NULL) < 0) {
-					pr_error("loopback mount failed\n");
-					pr_perror("mount");
-					ioctl(loop_fd, LOOP_CLR_FD, 0);
-					close(loop_fd);
-					return -1;
-				}
-
-				close(loop_fd);
-				return 0; /* success */
-			}
-		}
-		close(loop_fd);
+		if (ioctl(loop_fd, LOOP_GET_STATUS, &info) < 0 && errno == ENXIO)
+			break;
 	}
+
+	ret = ioctl(loop_fd, LOOP_SET_FD, file_fd);
+	if (ret < 0) {
+		pr_perror("LOOP_SET_FD");
+		goto out_error;
+	}
+
+	ret = mount(tmp, mountpoint, type, MS_RDONLY, NULL);
+	if (ret < 0) {
+		pr_error("loopback mount failed\n");
+		pr_perror("mount");
+		ioctl(loop_fd, LOOP_CLR_FD, 0);
+		goto out_error;
+	}
+
+	close(file_fd);
+	return loop_fd;;
+out_error:
+	if (file_fd >= 0)
+		close(file_fd);
+
+	if (loop_fd >= 0)
+		close(loop_fd);
+	return -1;
+}
+
+int unmount_loopback(int loop_fd, const char *mountpoint)
+{
+	int ret;
+
+	if (umount(mountpoint)) {
+		pr_perror("umount");
+		return -1;
+	}
+
+	ret = ioctl(loop_fd, LOOP_CLR_FD, 0);
+	if (ret < 0)
+		pr_perror("LOOP_CLR_FD");
+
+	close(loop_fd);
+
+	return (ret < 0);
 }
 
 int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
@@ -496,6 +525,7 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 	int ret;
 	static enum erase_type etype = SECDISCARD;
 
+	pr_debug("erasing offset %" PRIu64 " len %" PRIu64 "\n", start, len);
 	switch (etype) {
 	case SECDISCARD:
 		range[0] = start;
@@ -504,7 +534,7 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		ret = ioctl(fd, BLKSECDISCARD, &range);
 		if (ret >= 0)
 			break;
-		pr_debug("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
+		pr_info("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
 				strerror(errno));
 		etype = DISCARD;
 		/* fall through */
@@ -515,8 +545,9 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (ret >= 0)
 			break;
-		pr_debug("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
+		pr_info("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
 				strerror(errno));
+		pr_info("This can take a LONG time!\n");
 		etype = ZERO;
 		/* Fall through */
 	case ZERO:
@@ -537,6 +568,7 @@ static char *get_disk_sysfs(char *node)
 	return xasprintf("/sys/dev/block/%d:0/", major(sb.st_rdev));
 }
 
+#define MAX_INCREMENT 5LL * 1024LL * 1024LL * 1024LL
 
 int erase_partition(struct fstab_rec *vol)
 {
@@ -578,12 +610,18 @@ int erase_partition(struct fstab_rec *vol)
 		mui_show_text(0);
 		goto out;
 	}
+	pr_debug("max bytes: %" PRId64"\n", max_bytes);
 
-	if (max_bytes && disk_size > max_bytes) {
-		mui_show_progress(1.0, 0);
+
+	if (max_bytes && disk_size > max_bytes)
 		increment = max_bytes;
-	} else
+	else
 		increment = disk_size;
+
+	increment = min(increment, MAX_INCREMENT);
+
+	if (increment != disk_size)
+		mui_show_progress(1.0, 0);
 
 	pos = 0;
 	while (pos < disk_size) {

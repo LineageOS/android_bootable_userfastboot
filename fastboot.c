@@ -114,6 +114,7 @@ static unsigned char buffer[4096];
 
 static unsigned download_size = 0;
 static unsigned long download_max = 0;
+static pid_t fastboot_pid;
 
 #define STATE_OFFLINE	0
 #define STATE_COMMAND	1
@@ -144,7 +145,7 @@ static int usb_read(void *_buf, unsigned len)
 			pr_perror("read");
 			goto oops;
 		} else if (r == 0) {
-			pr_info("Connection closed\n");
+			pr_debug("Connection closed\n");
 			goto oops;
 		}
 
@@ -223,38 +224,57 @@ out:
 	return count;
 }
 
-void fastboot_ack(const char *code, const char *reason)
+static void fastboot_ack(const char *code, const char *format, va_list ap)
 {
 	char response[MAGIC_LENGTH];
+	char reason[MAGIC_LENGTH];
+	int i;
+
+	/* Might be called from a debugging macro. Refuse to do anything
+	 * not on the main Fastboot thread */
+	if (gettid() != fastboot_pid)
+		return;
 
 	if (fastboot_state != STATE_COMMAND)
 		return;
 
-	if (reason == 0)
-		reason = "";
-
+	vsnprintf(reason, MAGIC_LENGTH, format, ap);
+	/* Nip off trailing newlines */
+	for (i = strlen(reason); (i > 0) && reason[i - 1] == '\n'; i--)
+		reason[i - 1] = '\0';
 	snprintf(response, MAGIC_LENGTH, "%s%s", code, reason);
+	pr_debug("ack %s %s\n", code, reason);
 	usb_write(response, MAGIC_LENGTH);
-
 }
 
-void fastboot_info(const char *info)
+void fastboot_info(const char *fmt, ...)
 {
-	fastboot_ack("INFO", info);
-	pr_info("ack INFO: %s\n", info);
+	va_list ap;
+
+	va_start(ap, fmt);
+	fastboot_ack("INFO", fmt, ap);
+	va_end(ap);
 }
 
-void fastboot_fail(const char *reason)
+void fastboot_fail(const char *fmt, ...)
 {
-	pr_info("ack FAIL %s\n", reason);
-	fastboot_ack("FAIL", reason);
+	va_list ap;
+
+	va_start(ap, fmt);
+	fastboot_ack("FAIL", fmt, ap);
+	va_end(ap);
+
 	fastboot_state = STATE_COMPLETE;
 }
 
-void fastboot_okay(const char *info)
+void fastboot_okay(const char *fmt, ...)
 {
-	pr_info("ack OKAY %s\n", info);
-	fastboot_ack("OKAY", info);
+	va_list ap;
+
+	va_start(ap, fmt);
+	fastboot_ack("OKAY", fmt, ap);
+	va_end(ap);
+
 	fastboot_state = STATE_COMPLETE;
 }
 
@@ -267,15 +287,14 @@ static void cmd_getvar(char *arg, int *fd, unsigned sz)
 		struct fastboot_var *var;
 		pthread_mutex_lock(&varlist_mutex);
 		for (var = varlist; var; var = var->next) {
-			char *line = xasprintf("%s: %s", var->name, var->value);
-			fastboot_info(line);
+			fastboot_info("%s: %s", var->name, var->value);
 		}
 		pthread_mutex_unlock(&varlist_mutex);
 		fastboot_okay("");
 	} else {
 		value = fastboot_getvar(arg);
 		if (value) {
-			fastboot_okay(value);
+			fastboot_okay("%s", value);
 		} else {
 			fastboot_okay("");
 		}
@@ -328,7 +347,7 @@ again:
 		if (r < 0)
 			break;
 		buffer[r] = 0;
-		pr_info("fastboot got command: %s\n", buffer);
+		pr_debug("fastboot got command: %s\n", buffer);
 
 		for (cmd = cmdlist; cmd; cmd = cmd->next) {
 			if (memcmp(buffer, cmd->prefix, cmd->prefix_len))
@@ -479,7 +498,11 @@ int fastboot_init(unsigned long size)
 	fastboot_register("getvar:", cmd_getvar);
 	fastboot_register("download:", cmd_download);
 	fastboot_publish("max-download-size", download_max_str);
+	fastboot_pid = gettid();
 	fastboot_handler(NULL);
 
 	return 0;
 }
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */

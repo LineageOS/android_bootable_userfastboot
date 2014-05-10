@@ -25,6 +25,7 @@
 #include <cutils/klog.h>
 #include <errno.h>
 #include <string.h>
+#include "fastboot.h"
 
 #define pr_perror(x)	pr_error("%s failed: %s\n", x, strerror(errno))
 
@@ -35,6 +36,7 @@
 	mui_print("E: " __VA_ARGS__); \
 	mui_set_background(BACKGROUND_ICON_ERROR); \
 	mui_show_text(1); \
+	fastboot_info(__VA_ARGS__); \
 	} while (0)
 
 #define pr_warning(...)		do { \
@@ -45,6 +47,7 @@
 #define pr_info(...)		do { \
 	KLOG_NOTICE("userfastboot", __VA_ARGS__); \
 	mui_print(__VA_ARGS__); \
+	fastboot_info(__VA_ARGS__); \
 	} while (0)
 
 #if VERBOSE_DEBUG
@@ -62,3 +65,6 @@
 	} while (0)
 
 #endif
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */

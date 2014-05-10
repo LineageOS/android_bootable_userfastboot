@@ -14,7 +14,7 @@ LOCAL_SRC_FILES := \
 	sanity.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
-	-W -Wall -Wno-unused-parameter -Werror
+	-W -Wall -Wno-unused-parameter -Wno-format-zero-length -Werror
 
 LOCAL_MODULE := userfastboot
 LOCAL_MODULE_TAGS := optional

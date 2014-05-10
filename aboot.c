@@ -77,6 +77,7 @@
 #define CMD_HIDETEXT		"hidetext"
 #define CMD_LOCK		"lock"
 #define CMD_UNLOCK		"unlock"
+#define CMD_UNLOCK_NOCONFIRM	"unlock-noconfirm"
 
 #define FASTBOOT_GUID \
 	EFI_GUID(0x1ac80a82, 0x4f0c, 0x456b, 0x9a99, 0xde, 0xbe, 0xb4, 0x31, 0xfc, 0xc1);
@@ -294,7 +295,7 @@ out:
 }
 
 
-static int set_loader_lock(bool state)
+static int set_loader_lock(bool state, bool skip_confirmation)
 {
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	int ret;
@@ -314,7 +315,7 @@ static int set_loader_lock(bool state)
 		 * actually exists. If it doesn't the disk is unpartitioned
 		 * and we can proceed */
 		if (is_valid_blkdev(vol->blk_device)) {
-			if (!confirm_oem_unlock())
+			if (!skip_confirmation && !confirm_oem_unlock())
 				return -1;
 
 			pr_status("Userdata erase required, this can take a while...\n");
@@ -553,14 +554,14 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		cbret = cb(tgt.params, fd, sz);
 		if (cbret) {
 			pr_error("%s flash failed!\n", tgt.name);
-			fastboot_fail(tgt.name);
+			fastboot_fail("%s", tgt.name);
 		} else
 			fastboot_okay("");
 		goto out;
 	} else {
 		vol = volume_for_name(tgt.name);
 		if (!vol) {
-			fastboot_fail(tgt.name);
+			fastboot_fail("%s", tgt.name);
 			goto out;
 		}
 	}
@@ -589,14 +590,12 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		}
 	}
 
-#if 0
 	if (!strcmp(targetspec, "bootloader")) {
 		if (esp_sanity_checks(FASTBOOT_DOWNLOAD_TMP_FILE)) {
 			fastboot_fail("malformed bootloader image");
 			goto out_map;
 		}
 	}
-#endif
 
 	pr_debug("target '%s' volume size: %" PRIu64 " MiB\n", targetspec, vsize >> 20);
 
@@ -621,7 +620,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 			fastboot_fail("target partition too small!");
 			goto out_map;
 		}
-		pr_info("Writing %u MiB to %s\n", sz >> 20, vol->blk_device);
+		pr_debug("Writing %u MiB to %s\n", sz >> 20, vol->blk_device);
 		ret = named_file_write(vol->blk_device, data, sz, 0, 0);
 	}
 	pr_verbose("Done writing image\n");
@@ -673,9 +672,10 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 
 	locked = is_loader_locked();
 
-	if (strcmp(argv[0], CMD_UNLOCK) == 0) {
+	if (!strcmp(argv[0], CMD_UNLOCK) || !strcmp(argv[0], CMD_UNLOCK_NOCONFIRM)) {
 		if (locked) {
-			if (set_loader_lock(false)) {
+			if (set_loader_lock(false,
+					!strcmp(argv[0], CMD_UNLOCK_NOCONFIRM))) {
 				pr_error("Couldn't unlock!\n");
 				fastboot_fail("oem unlock");
 			} else {
@@ -699,7 +699,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		if (ret) {
 			pr_error("oem %s command failed, retval = %d\n",
 					argv[0], ret);
-			fastboot_fail(argv[0]);
+			fastboot_fail("%s", argv[0]);
 		} else
 			fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_SHOWTEXT) == 0) {
@@ -709,7 +709,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		mui_show_text(0);
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
-		set_loader_lock(true);
+		set_loader_lock(true, false);
 		fastboot_okay("");
 	} else {
 		fastboot_fail("unknown OEM command");
@@ -778,8 +778,8 @@ out_unmap:
 out:
 	unmount_partition(vol_bootloader);
 	if (success) {
-		fastboot_okay("");
 		pr_info("Booting into supplied image...\n");
+		fastboot_okay("");
 		android_reboot(ANDROID_RB_RESTART, 0, 0);
 		pr_error("Reboot failed\n");
 	}

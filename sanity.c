@@ -74,8 +74,10 @@ int esp_sanity_checks(const char *path)
 {
 	struct stat sb;
 	int ret = -1;
+	int loop_fd;
 
-	if (mount_loopback(path, "vfat", "/mnt")) {
+	loop_fd = mount_loopback(path, "vfat", "/mnt");
+	if (loop_fd < 0) {
 		pr_error("Couldn't loopback mount bootloader image\n");
 		return -1;
 	}
@@ -90,7 +92,10 @@ int esp_sanity_checks(const char *path)
 	pr_debug("bootloader image seems OK\n");
 	ret = 0;
 out:
-	umount("/mnt");
+	if (unmount_loopback(loop_fd, "/mnt")) {
+		pr_error("Couldn't un-mount the loopback device\n");
+		return -1;
+	}
 	return ret;
 }
 

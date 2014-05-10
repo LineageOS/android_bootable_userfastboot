@@ -22,6 +22,8 @@ void die(void);
 void die_errno(const char *s);
 void apply_sw_update(const char *location, int send_fb_ok);
 int mount_partition_device(const char *device, const char *type, char *mountpoint);
+int mount_loopback(const char *path, const char *type, char *mountpoint);
+int unmount_loopback(int loop_fd, const char *mountpoint);
 void import_kernel_cmdline(void (*callback)(char *name));
 int is_valid_blkdev(const char *node);
 char *read_sysfs(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
@@ -36,7 +38,6 @@ void xstring_append_line(char **str, const char *fmt, ...) __attribute__ ((forma
 
 /* struct fstab_rec operations */
 int mount_partition(struct fstab_rec *vol);
-int mount_loopback(const char *path, const char *type, char *mountpoint);
 int erase_partition(struct fstab_rec *vol);
 int check_ext_superblock(struct fstab_rec *vol, int *sb_present);
 int unmount_partition(struct fstab_rec *vol);

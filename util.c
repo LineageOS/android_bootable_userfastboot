@@ -346,7 +346,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 			type, mountpoint);
 	ret = mount(device, mountpoint, type, 0, "");
 	if (ret && errno != EBUSY) {
-		pr_info("mount: %s (%s): %s\n", device, type, strerror(errno));
+		pr_debug("mount: %s (%s): %s\n", device, type, strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -534,7 +534,7 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		ret = ioctl(fd, BLKSECDISCARD, &range);
 		if (ret >= 0)
 			break;
-		pr_debug("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
+		pr_info("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
 				strerror(errno));
 		etype = DISCARD;
 		/* fall through */
@@ -545,8 +545,9 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (ret >= 0)
 			break;
-		pr_debug("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
+		pr_info("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
 				strerror(errno));
+		pr_info("This can take a LONG time!\n");
 		etype = ZERO;
 		/* Fall through */
 	case ZERO:

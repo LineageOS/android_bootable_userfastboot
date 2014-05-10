@@ -44,9 +44,13 @@ void fastboot_register(const char *prefix,
 const char *fastboot_getvar(const char *name);
 
 /* only callable from within a command handler */
-void fastboot_okay(const char *result);
-void fastboot_fail(const char *reason);
-void fastboot_info(const char *info);
+void fastboot_info(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+void fastboot_fail(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+void fastboot_okay(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+
 void fastboot_publish(const char *name, const char *value);
 
 #endif
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */

@@ -554,14 +554,14 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		cbret = cb(tgt.params, fd, sz);
 		if (cbret) {
 			pr_error("%s flash failed!\n", tgt.name);
-			fastboot_fail(tgt.name);
+			fastboot_fail("%s", tgt.name);
 		} else
 			fastboot_okay("");
 		goto out;
 	} else {
 		vol = volume_for_name(tgt.name);
 		if (!vol) {
-			fastboot_fail(tgt.name);
+			fastboot_fail("%s", tgt.name);
 			goto out;
 		}
 	}
@@ -699,7 +699,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		if (ret) {
 			pr_error("oem %s command failed, retval = %d\n",
 					argv[0], ret);
-			fastboot_fail(argv[0]);
+			fastboot_fail("%s", argv[0]);
 		} else
 			fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_SHOWTEXT) == 0) {
@@ -778,8 +778,8 @@ out_unmap:
 out:
 	unmount_partition(vol_bootloader);
 	if (success) {
-		fastboot_okay("");
 		pr_info("Booting into supplied image...\n");
+		fastboot_okay("");
 		android_reboot(ANDROID_RB_RESTART, 0, 0);
 		pr_error("Reboot failed\n");
 	}

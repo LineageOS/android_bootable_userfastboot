@@ -620,7 +620,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 			fastboot_fail("target partition too small!");
 			goto out_map;
 		}
-		pr_info("Writing %u MiB to %s\n", sz >> 20, vol->blk_device);
+		pr_debug("Writing %u MiB to %s\n", sz >> 20, vol->blk_device);
 		ret = named_file_write(vol->blk_device, data, sz, 0, 0);
 	}
 	pr_verbose("Done writing image\n");

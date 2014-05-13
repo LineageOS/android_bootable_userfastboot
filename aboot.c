@@ -193,12 +193,12 @@ static bool is_loader_locked(void)
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
 	if (ret) {
-		pr_debug("Couldn't read OEMLock\n");
+		pr_debug("Couldn't read OEMLock, assuming device is locked\n");
 		return true;
 	}
 
 	if (dsize < 2 || data[1]) {
-		pr_debug("Malformed OEMLock data\n");
+		pr_debug("Malformed OEMLock data, assuming device is locked\n");
 		return true;
 	}
 
@@ -238,6 +238,8 @@ static bool confirm_oem_unlock(void)
 	int chosen_item = -1;
 	int selected = 1;
 	bool result = false;
+
+	fastboot_info("Please confirm the OEM unlock action using the UI.");
 
 	char *headers[] = {
 		"**** Unlock bootloader? ****",
@@ -319,6 +321,8 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 				return -1;
 
 			pr_status("Userdata erase required, this can take a while...\n");
+			fastboot_info("Userdata erase required, this can take a while...\n");
+
 			wiped = true;
 			if (erase_partition(vol)) {
 				pr_error("couldn't erase data partition\n");

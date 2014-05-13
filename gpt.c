@@ -315,7 +315,7 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 		goto out_free_gpt;
 	}
 
-	pr_info("Disk %s has %" PRIu64" %d-byte sectors for a total capacity of %"
+	pr_debug("Disk %s has %" PRIu64" %d-byte sectors for a total capacity of %"
 			PRIu64 " MiB\n", device, ctx.gpt->sectors, ctx.gpt->lba_size,
 			to_mib_floor(ctx.gpt->sectors * ctx.gpt->lba_size));
 

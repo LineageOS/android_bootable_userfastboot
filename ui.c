@@ -28,10 +28,11 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <minui/minui.h>
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
 
-#include "microui.h"
+#include "userfastboot_ui.h"
 
 
 #define MAX_COLS 96
@@ -137,7 +138,7 @@ static void draw_background_locked(int icon)
         gr_color(167, 162, 195, 255);
         pthread_mutex_lock(&gTextMutex);
         for (i = 0; i <= info_row; i++)
-            gr_text(0, CHAR_HEIGHT * (i + 1), infotext[i]);
+            gr_text(0, CHAR_HEIGHT * i, infotext[i], 0);
         pthread_mutex_unlock(&gTextMutex);
     }
 
@@ -158,7 +159,6 @@ static void draw_status_locked()
 {
     int iconHeight = gr_get_height(gBackgroundIcon[BACKGROUND_ICON_INSTALLING]);
     int height = gr_get_height(gProgressBarEmpty);
-    int fontx, fonty;
 
     if (show_text || show_menu)
         return;
@@ -176,7 +176,7 @@ static void draw_status_locked()
         gr_fill(0, dy - CHAR_HEIGHT, gr_fb_width(), dy + CHAR_HEIGHT);
 
         gr_color(187, 221, 230, 255);
-        gr_text(dx, dy, status);
+        gr_text(dx, dy, status, 1);
         status_modified = 0;
     }
 
@@ -227,7 +227,7 @@ static void draw_progress_locked()
 
 static void draw_text_line(int row, const char* t) {
   if (t[0] != '\0') {
-    gr_text(0, (row+1)*CHAR_HEIGHT-1, t);
+    gr_text(0, (row) * CHAR_HEIGHT, t, 0);
   }
 }
 
@@ -437,7 +437,7 @@ void mui_init(void)
 
     int i;
     for (i = 0; BITMAPS[i].name != NULL; ++i) {
-        int result = res_create_surface(BITMAPS[i].name, BITMAPS[i].surface);
+        int result = res_create_display_surface(BITMAPS[i].name, BITMAPS[i].surface);
         if (result < 0) {
             printf("Missing bitmap %s\n(Code %d)\n", BITMAPS[i].name, result);
         }
@@ -449,7 +449,7 @@ void mui_init(void)
         char filename[40];
         // "indeterminate01.png", "indeterminate02.png", ...
         sprintf(filename, "indeterminate%02d", i+1);
-        int result = res_create_surface(filename, gProgressBarIndeterminate+i);
+        int result = res_create_display_surface(filename, gProgressBarIndeterminate+i);
         if (result < 0) {
             printf("Missing bitmap %s\n(Code %d)\n", filename, result);
         }
@@ -463,7 +463,7 @@ void mui_init(void)
             // "icon_installing_overlay01.png",
             // "icon_installing_overlay02.png", ...
             sprintf(filename, "icon_installing_overlay%02d", i+1);
-            int result = res_create_surface(filename, gInstallationOverlay+i);
+            int result = res_create_display_surface(filename, gInstallationOverlay+i);
             if (result < 0) {
                 printf("Missing bitmap %s\n(Code %d)\n", filename, result);
             }
@@ -637,7 +637,6 @@ void mui_print(const char *fmt, ...)
 {
     char buf[256];
     va_list ap;
-    int chars;
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
@@ -715,7 +714,6 @@ int mui_menu_select(int sel) {
 }
 
 void mui_end_menu() {
-    int i;
     pthread_mutex_lock(&gUpdateMutex);
     if (show_menu > 0 && text_rows > 0 && text_cols > 0) {
         show_menu = 0;

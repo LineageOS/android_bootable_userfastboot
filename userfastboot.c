@@ -46,7 +46,6 @@
 #include <unistd.h>
 #include <sys/mount.h>
 
-#include <microui.h>
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
 

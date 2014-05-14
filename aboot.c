@@ -684,7 +684,6 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		if (locked) {
 			if (set_loader_lock(false,
 					!strcmp(argv[0], CMD_UNLOCK_NOCONFIRM))) {
-				pr_error("Couldn't unlock!\n");
 				fastboot_fail("oem unlock");
 			} else {
 				fastboot_okay("");

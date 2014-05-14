@@ -615,12 +615,16 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		pr_debug("Detected sparse header, total size %" PRIu64 " MiB\n",
 				totalsize >> 20);
 		if (totalsize > vsize) {
+			pr_error("need %" PRIu64 " bytes, have %" PRIu64 " available\n",
+					totalsize, vsize);
 			fastboot_fail("target partition too small!");
 			goto out_map;
 		}
 		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
 		if (sz > vsize) {
+			pr_error("need %d, %" PRIu64 " available\n",
+					sz, vsize);
 			fastboot_fail("target partition too small!");
 			goto out_map;
 		}

@@ -92,18 +92,26 @@ static void publish_part_data(struct fstab_rec *v, char *name)
 	char *buf;
 	uint64_t size;
 	struct stat sb;
+	int ctr = 15;
 
-	/* Skip if not mapped to a real device node */
-	if (stat(v->blk_device, &sb))
-		return;
+	/* Keep trying for ctr seconds for the device node to show up.
+	 * ueventd may be busy creating the node */
+	while (ctr-- && stat(v->blk_device, &sb)) {
+		pr_debug("waiting for %s\n", v->blk_device);
+		sleep(1);
+	}
 
 	buf = xasprintf("partition-type:%s", name);
 	fastboot_publish(buf, xstrdup(v->fs_type));
 	free(buf);
 
 	buf = xasprintf("partition-size:%s", name);
-	get_volume_size(v, &size);
-	fastboot_publish(buf, xasprintf("0x%" PRIx64, size));
+	if (get_volume_size(v, &size)) {
+		pr_error("Couldn't get %s (%s) volume size\n", name, v->blk_device);
+		fastboot_publish(buf,  xstrdup("0x0"));
+	} else {
+		fastboot_publish(buf, xasprintf("0x%" PRIx64, size));
+	}
 	free(buf);
 }
 
@@ -112,10 +120,21 @@ void publish_all_part_data(void)
 	int i;
 	for (i = 0; i < fstab->num_entries; i++) {
 		struct fstab_rec *v = &fstab->recs[i];
+
+		/* Don't care about sd card slot and it may not even
+		 * be there, Skip anything that begins with /sdcard.
+		 * skip the fake /tmp entry too */
+		if (!strncmp("/sdcard", v->mount_point, 7) ||
+				!strcmp("/tmp", v->mount_point))
+			continue;
+
 		publish_part_data(v, v->mount_point + 1);
 		/* Historical */
 		if (!strcmp("/data", v->mount_point))
 			publish_part_data(v, "userdata");
 	}
 }
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
 

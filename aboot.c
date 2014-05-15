@@ -349,7 +349,7 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 				fastboot_okay("");
 				android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
 			}
-			fastboot_publish("unlocked", "yes");
+			fastboot_publish("unlocked", xstrdup("yes"));
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
 			return -1;
@@ -357,7 +357,7 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 	} else {
 		if (is_loader_locked()) {
 			pr_info("Fastboot now locked\n");
-			fastboot_publish("unlocked", "no");
+			fastboot_publish("unlocked", xstrdup("no"));
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
 			return -1;
@@ -818,12 +818,8 @@ static int start_adbd(int argc, char **argv)
 static void publish_from_prop(char *key, char *prop, char *dfl)
 {
 	char val[PROPERTY_VALUE_MAX];
-	if (property_get(prop, val, dfl)) {
-		char *valcpy = strdup(val);
-		if (valcpy) {
-			fastboot_publish(key, valcpy);
-		}
-	}
+	if (property_get(prop, val, dfl))
+		fastboot_publish(key, xstrdup(val));
 }
 
 
@@ -870,10 +866,10 @@ void aboot_register_commands(void)
 	fastboot_register("reboot-bootloader", cmd_reboot_bl);
 	fastboot_register("continue", cmd_reboot);
 
-	fastboot_publish("product", DEVICE_NAME);
+	fastboot_publish("product", xstrdup(DEVICE_NAME));
 	fastboot_publish("product-name", get_dmi_data("product_name"));
-	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
-	fastboot_publish("version-baseband", "N/A");
+	fastboot_publish("version-bootloader", xstrdup(USERFASTBOOT_VERSION));
+	fastboot_publish("version-baseband", xstrdup("N/A"));
 	publish_from_prop("serialno", "ro.serialno", "unknown");
 
 	flash_cmds = hashmapCreate(8, strhash, strcompare);
@@ -885,9 +881,9 @@ void aboot_register_commands(void)
 	publish_all_part_data();
 
 	/* Currently we don't require signatures on images */
-	fastboot_publish("secure", "no");
+	fastboot_publish("secure", xstrdup("no"));
 
-	fastboot_publish("secureboot", is_secure_boot_enabled() ? "yes" : "no");
+	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled() ? "yes" : "no"));
 
 	bios_vendor = get_dmi_data("bios_vendor");
 	bios_version = get_dmi_data("bios_version");
@@ -909,7 +905,7 @@ void aboot_register_commands(void)
 		fastboot_publish("kernel", xasprintf("%s %s %s",
 				uts.release, uts.version, uts.machine));
 	else
-		fastboot_publish("kernel", "unknown");
+		fastboot_publish("kernel", xstrdup("unknown"));
 
 
 	/* At this time we don't have a special 'charge mode',
@@ -918,7 +914,7 @@ void aboot_register_commands(void)
 	 * 'fastboot oem off-mode-charge 0' which bypasses
 	 * charge mode and boots the device normally as
 	 * if the user pressed the power button */
-	fastboot_publish("off-mode-charge", "0");
+	fastboot_publish("off-mode-charge", xstrdup("0"));
 
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
@@ -928,11 +924,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("adbd", start_adbd);
 	register_userfastboot_plugins();
 
-	if (!is_loader_locked()) {
-		fastboot_publish("unlocked", "yes");
-	} else {
-		fastboot_publish("unlocked", "no");
-	}
+	fastboot_publish("unlocked", xstrdup(is_loader_locked() ? "no" : "yes"));
 }
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround

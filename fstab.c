@@ -90,7 +90,6 @@ struct fstab_rec *volume_for_name(const char *name)
 static void publish_part_data(struct fstab_rec *v, char *name)
 {
 	char *buf;
-	char *buf2;
 	uint64_t size;
 	struct stat sb;
 
@@ -98,22 +97,14 @@ static void publish_part_data(struct fstab_rec *v, char *name)
 	if (stat(v->blk_device, &sb))
 		return;
 
-	if (asprintf(&buf, "partition-type:%s", name) < 0) {
-		pr_error("out of memory\n");
-		die();
-	}
-	fastboot_publish(buf, v->fs_type);
+	buf = xasprintf("partition-type:%s", name);
+	fastboot_publish(buf, xstrdup(v->fs_type));
+	free(buf);
 
-	if (asprintf(&buf, "partition-size:%s", name) < 0) {
-		pr_error("out of memory\n");
-		die();
-	}
+	buf = xasprintf("partition-size:%s", name);
 	get_volume_size(v, &size);
-	if (asprintf(&buf2, "0x%" PRIx64, size) < 0) {
-		pr_error("out of memory\n");
-		die();
-	}
-	fastboot_publish(buf, buf2);
+	fastboot_publish(buf, xasprintf("0x%" PRIx64, size));
+	free(buf);
 }
 
 void publish_all_part_data(void)

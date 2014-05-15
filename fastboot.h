@@ -30,7 +30,11 @@
 #define __APP_FASTBOOT_H
 #define FASTBOOT_DOWNLOAD_TMP_FILE "/tmp/fstboot.img"
 
+/* Initialize fastboot protocol */
 int fastboot_init(unsigned long size);
+
+/* Begin listening for fastboot commands. Does not return except on fatal errors */
+int fastboot_handler(void);
 
 /* register a command handler 
  * - command handlers will be called if their prefix matches
@@ -41,14 +45,18 @@ void fastboot_register(const char *prefix,
                        void (*handle)(char *arg, int *fd, unsigned size));
 
 /* Fetch the value of a fastboot_publish variable */
-const char *fastboot_getvar(const char *name);
+char *fastboot_getvar(char *name);
 
 /* only callable from within a command handler */
 void fastboot_info(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 void fastboot_fail(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 void fastboot_okay(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 
-void fastboot_publish(const char *name, const char *value);
+/* Takes ownership of the value pointer, may be freed at any time. Do not
+ * use a constant string! xstrdup() is your friend.
+ * It uses a copy of the name pointer, can be a constant string or something
+ * on the heap; free it after publishing if you need to */
+void fastboot_publish(char *name, char *value);
 
 #endif
 

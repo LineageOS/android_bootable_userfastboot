@@ -46,7 +46,6 @@
 #include <unistd.h>
 #include <sys/mount.h>
 
-#include <microui.h>
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
 
@@ -90,18 +89,19 @@ int main(int argc, char **argv)
 		pr_error("Warning: No file_contexts\n");
 	}
 
-	load_volume_table();
-	aboot_register_commands();
-	start_interface_thread();
-
 	ret = statfs("/tmp", &buf);
 	if (!ret) {
 		unsigned long size = buf.f_bsize * buf.f_bfree;
 		fastboot_init(size);
 	} else {
 		pr_error("Error when acquiring tmpfs size:-%d\n", errno);
+		exit(1);
 	}
 
+	load_volume_table();
+	aboot_register_commands();
+	start_interface_thread();
+	fastboot_handler();
 	/* Shouldn't get here */
 	exit(1);
 }

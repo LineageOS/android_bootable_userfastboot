@@ -87,44 +87,55 @@ struct fstab_rec *volume_for_name(const char *name)
 	return vol;
 }
 
-static void publish_part_data(struct fstab_rec *v, char *name)
+static void publish_part_data(bool wait, struct fstab_rec *v, char *name)
 {
 	char *buf;
-	char *buf2;
 	uint64_t size;
 	struct stat sb;
+	int ctr = 15;
 
-	/* Skip if not mapped to a real device node */
-	if (stat(v->blk_device, &sb))
-		return;
+	/* Keep trying for ctr seconds for the device node to show up.
+	 * ueventd may be busy creating the node */
+	while (wait && ctr-- && stat(v->blk_device, &sb)) {
+		pr_debug("waiting for %s\n", v->blk_device);
+		sleep(1);
+	}
 
-	if (asprintf(&buf, "partition-type:%s", name) < 0) {
-		pr_error("out of memory\n");
-		die();
-	}
-	fastboot_publish(buf, v->fs_type);
+	buf = xasprintf("partition-type:%s", name);
+	fastboot_publish(buf, xstrdup(v->fs_type));
+	free(buf);
 
-	if (asprintf(&buf, "partition-size:%s", name) < 0) {
-		pr_error("out of memory\n");
-		die();
+	buf = xasprintf("partition-size:%s", name);
+	if (get_volume_size(v, &size)) {
+		if (wait)
+			pr_error("Couldn't get %s volume size\n", name);
+		fastboot_publish(buf, xstrdup("0x0"));
+	} else {
+		fastboot_publish(buf, xasprintf("0x%" PRIx64, size));
 	}
-	get_volume_size(v, &size);
-	if (asprintf(&buf2, "0x%" PRIx64, size) < 0) {
-		pr_error("out of memory\n");
-		die();
-	}
-	fastboot_publish(buf, buf2);
+	free(buf);
 }
 
-void publish_all_part_data(void)
+void publish_all_part_data(bool wait)
 {
 	int i;
 	for (i = 0; i < fstab->num_entries; i++) {
 		struct fstab_rec *v = &fstab->recs[i];
-		publish_part_data(v, v->mount_point + 1);
+
+		/* Don't care about sd card slot and it may not even
+		 * be there, Skip anything that begins with /sdcard.
+		 * skip the fake /tmp entry too */
+		if (!strncmp("/sdcard", v->mount_point, 7) ||
+				!strcmp("/tmp", v->mount_point))
+			continue;
+
+		publish_part_data(wait, v, v->mount_point + 1);
 		/* Historical */
 		if (!strcmp("/data", v->mount_point))
-			publish_part_data(v, "userdata");
+			publish_part_data(wait, v, "userdata");
 	}
 }
+
+/* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
+ */
 

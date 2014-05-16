@@ -30,8 +30,11 @@ int aboot_register_flash_cmd(char *key, flash_func callback);
 
 int aboot_register_oem_cmd(char *key, oem_func callback);
 
-/* publish a variable readable by the built-in getvar command */
-void fastboot_publish(const char *name, const char *value);
+/* Takes ownership of the value pointer, may be freed at any time. Do not
+ * use a constant string! xstrdup() is your friend.
+ * It uses a copy of the name pointer, can be a constant string or something
+ * on the heap; free it after publishing if you need to */
+void fastboot_publish(char *name, char *value);
 
 /* If non-NULL, run this during provisioning checks, which are
  * performed before automatic update packages are applied */

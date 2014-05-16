@@ -41,6 +41,8 @@
 #include <sys/mman.h>
 #include <errno.h>
 
+#include <cutils/hashmap.h>
+
 #include "userfastboot.h"
 #include "userfastboot_ui.h"
 #include "fastboot.h"
@@ -54,12 +56,6 @@ struct fastboot_cmd {
 	const char *prefix;
 	unsigned prefix_len;
 	void (*handle) (char *arg, int *fd, unsigned sz);
-};
-
-struct fastboot_var {
-	struct fastboot_var *next;
-	const char *name;
-	const char *value;
 };
 
 static struct fastboot_cmd *cmdlist;
@@ -77,35 +73,32 @@ void fastboot_register(const char *prefix,
 	cmdlist = cmd;
 }
 
-static struct fastboot_var *varlist;
-static pthread_mutex_t varlist_mutex = PTHREAD_MUTEX_INITIALIZER;
+static Hashmap *vars;
 
-void fastboot_publish(const char *name, const char *value)
+void fastboot_publish(char *name, char *value)
 {
-	struct fastboot_var *var;
 	pr_verbose("publishing %s=%s\n", name, value);
-	var = xmalloc(sizeof(*var));
-	var->name = name;
-	var->value = value;
-	pthread_mutex_lock(&varlist_mutex);
-	var->next = varlist;
-	varlist = var;
-	pthread_mutex_unlock(&varlist_mutex);
+
+	hashmapLock(vars);
+
+	if (hashmapContainsKey(vars, name)) {
+		pr_verbose("replacing old value\n");
+		free(hashmapPut(vars, name, value));
+	} else {
+		pr_verbose("new value for table\n");
+		hashmapPut(vars, xstrdup(name), value);
+	}
+
+	hashmapUnlock(vars);
 }
 
-const char *fastboot_getvar(const char *name)
+char *fastboot_getvar(char *name)
 {
-	struct fastboot_var *var;
-	const char *ret = NULL;
+	char *ret;
 
-	pthread_mutex_lock(&varlist_mutex);
-	for (var = varlist; var; var = var->next) {
-		if (!strcmp(name, var->name)) {
-			ret = var->value;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&varlist_mutex);
+	hashmapLock(vars);
+	ret = hashmapGet(vars, name);
+	hashmapUnlock(vars);
 
 	return ret;
 }
@@ -278,18 +271,52 @@ void fastboot_okay(const char *fmt, ...)
 	fastboot_state = STATE_COMPLETE;
 }
 
+struct getvar_ctx {
+	char **entries;
+	int i;
+};
+
+/* from the qsort man page */
+static int cmpstringp(const void *p1, const void *p2)
+{
+	return strcmp(* (char * const *) p1, * (char * const *) p2);
+}
+
+static bool getvar_all_cb(void *key, void *value, void *context)
+{
+	char *keystr = key;
+	char *valstr = value;
+	struct getvar_ctx *ctx = context;
+
+	ctx->entries[ctx->i++] = xasprintf("%s: %s", keystr, valstr);
+	return true;
+}
+
 static void cmd_getvar(char *arg, int *fd, unsigned sz)
 {
 	const char *value;
 
 	pr_debug("fastboot: cmd_getvar %s\n", arg);
 	if (!strcmp(arg, "all")) {
-		struct fastboot_var *var;
-		pthread_mutex_lock(&varlist_mutex);
-		for (var = varlist; var; var = var->next) {
-			fastboot_info("%s: %s", var->name, var->value);
+		struct getvar_ctx ctx;
+		int mapsize;
+		int i;
+
+		hashmapLock(vars);
+		mapsize = hashmapSize(vars);
+
+		ctx.entries = calloc(mapsize, sizeof(char *));
+		ctx.i = 0;
+
+		hashmapForEach(vars, getvar_all_cb, &ctx);
+		hashmapUnlock(vars);
+
+		qsort(ctx.entries, mapsize, sizeof(char *), cmpstringp);
+		for (i = 0; i < mapsize; i++) {
+			fastboot_info("%s", ctx.entries[i]);
+			free(ctx.entries[i]);
 		}
-		pthread_mutex_unlock(&varlist_mutex);
+		free(ctx.entries);
 		fastboot_okay("");
 	} else {
 		value = fastboot_getvar(arg);
@@ -437,7 +464,7 @@ static int open_usb(void)
 	return usb_fp;
 }
 
-static int fastboot_handler(void *arg)
+int fastboot_handler(void)
 {
 	int usb_fd_idx = 0;
 	int tcp_fd_idx = 1;
@@ -489,17 +516,25 @@ static int fastboot_handler(void *arg)
 	return 0;
 }
 
+static int str_hash(void *key)
+{
+	return hashmapHash(key, strlen(key));
+}
+
+static bool str_equals(void *keyA, void *keyB)
+{
+	return strcmp(keyA, keyB) == 0;
+}
+
 int fastboot_init(unsigned long size)
 {
-	char download_max_str[30];
 	pr_verbose("fastboot_init()\n");
 	download_max = size;
-	snprintf(download_max_str, sizeof(download_max_str), "0x%lX", download_max);
+	vars = hashmapCreate(128, str_hash, str_equals);
 	fastboot_register("getvar:", cmd_getvar);
 	fastboot_register("download:", cmd_download);
-	fastboot_publish("max-download-size", download_max_str);
+	fastboot_publish("max-download-size", xasprintf("0x%lX", download_max));
 	fastboot_pid = gettid();
-	fastboot_handler(NULL);
 
 	return 0;
 }

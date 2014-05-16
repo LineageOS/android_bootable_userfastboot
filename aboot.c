@@ -193,12 +193,12 @@ static bool is_loader_locked(void)
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
 	if (ret) {
-		pr_debug("Couldn't read OEMLock\n");
+		pr_debug("Couldn't read OEMLock, assuming device is locked\n");
 		return true;
 	}
 
 	if (dsize < 2 || data[1]) {
-		pr_debug("Malformed OEMLock data\n");
+		pr_debug("Malformed OEMLock data, assuming device is locked\n");
 		return true;
 	}
 
@@ -238,6 +238,8 @@ static bool confirm_oem_unlock(void)
 	int chosen_item = -1;
 	int selected = 1;
 	bool result = false;
+
+	fastboot_info("Please confirm the OEM unlock action using the UI.");
 
 	char *headers[] = {
 		"**** Unlock bootloader? ****",
@@ -319,6 +321,8 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 				return -1;
 
 			pr_status("Userdata erase required, this can take a while...\n");
+			fastboot_info("Userdata erase required, this can take a while...\n");
+
 			wiped = true;
 			if (erase_partition(vol)) {
 				pr_error("couldn't erase data partition\n");
@@ -345,7 +349,7 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 				fastboot_okay("");
 				android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
 			}
-			fastboot_publish("unlocked", "yes");
+			fastboot_publish("unlocked", xstrdup("yes"));
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
 			return -1;
@@ -353,7 +357,7 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 	} else {
 		if (is_loader_locked()) {
 			pr_info("Fastboot now locked\n");
-			fastboot_publish("unlocked", "no");
+			fastboot_publish("unlocked", xstrdup("no"));
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
 			return -1;
@@ -611,12 +615,16 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 		pr_debug("Detected sparse header, total size %" PRIu64 " MiB\n",
 				totalsize >> 20);
 		if (totalsize > vsize) {
+			pr_error("need %" PRIu64 " bytes, have %" PRIu64 " available\n",
+					totalsize, vsize);
 			fastboot_fail("target partition too small!");
 			goto out_map;
 		}
 		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
 		if (sz > vsize) {
+			pr_error("need %d, %" PRIu64 " available\n",
+					sz, vsize);
 			fastboot_fail("target partition too small!");
 			goto out_map;
 		}
@@ -676,7 +684,6 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		if (locked) {
 			if (set_loader_lock(false,
 					!strcmp(argv[0], CMD_UNLOCK_NOCONFIRM))) {
-				pr_error("Couldn't unlock!\n");
 				fastboot_fail("oem unlock");
 			} else {
 				fastboot_okay("");
@@ -811,12 +818,8 @@ static int start_adbd(int argc, char **argv)
 static void publish_from_prop(char *key, char *prop, char *dfl)
 {
 	char val[PROPERTY_VALUE_MAX];
-	if (property_get(prop, val, dfl)) {
-		char *valcpy = strdup(val);
-		if (valcpy) {
-			fastboot_publish(key, valcpy);
-		}
-	}
+	if (property_get(prop, val, dfl))
+		fastboot_publish(key, xstrdup(val));
 }
 
 
@@ -863,10 +866,10 @@ void aboot_register_commands(void)
 	fastboot_register("reboot-bootloader", cmd_reboot_bl);
 	fastboot_register("continue", cmd_reboot);
 
-	fastboot_publish("product", DEVICE_NAME);
+	fastboot_publish("product", xstrdup(DEVICE_NAME));
 	fastboot_publish("product-name", get_dmi_data("product_name"));
-	fastboot_publish("version-bootloader", USERFASTBOOT_VERSION);
-	fastboot_publish("version-baseband", "N/A");
+	fastboot_publish("version-bootloader", xstrdup(USERFASTBOOT_VERSION));
+	fastboot_publish("version-baseband", xstrdup("N/A"));
 	publish_from_prop("serialno", "ro.serialno", "unknown");
 
 	flash_cmds = hashmapCreate(8, strhash, strcompare);
@@ -875,12 +878,12 @@ void aboot_register_commands(void)
 		pr_error("Memory allocation error\n");
 		die();
 	}
-	publish_all_part_data();
+	publish_all_part_data(false);
 
 	/* Currently we don't require signatures on images */
-	fastboot_publish("secure", "no");
+	fastboot_publish("secure", xstrdup("no"));
 
-	fastboot_publish("secureboot", is_secure_boot_enabled() ? "yes" : "no");
+	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled() ? "yes" : "no"));
 
 	bios_vendor = get_dmi_data("bios_vendor");
 	bios_version = get_dmi_data("bios_version");
@@ -902,7 +905,7 @@ void aboot_register_commands(void)
 		fastboot_publish("kernel", xasprintf("%s %s %s",
 				uts.release, uts.version, uts.machine));
 	else
-		fastboot_publish("kernel", "unknown");
+		fastboot_publish("kernel", xstrdup("unknown"));
 
 
 	/* At this time we don't have a special 'charge mode',
@@ -911,7 +914,7 @@ void aboot_register_commands(void)
 	 * 'fastboot oem off-mode-charge 0' which bypasses
 	 * charge mode and boots the device normally as
 	 * if the user pressed the power button */
-	fastboot_publish("off-mode-charge", "0");
+	fastboot_publish("off-mode-charge", xstrdup("0"));
 
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
@@ -921,11 +924,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("adbd", start_adbd);
 	register_userfastboot_plugins();
 
-	if (!is_loader_locked()) {
-		fastboot_publish("unlocked", "yes");
-	} else {
-		fastboot_publish("unlocked", "no");
-	}
+	fastboot_publish("unlocked", xstrdup(is_loader_locked() ? "no" : "yes"));
 }
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround

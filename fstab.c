@@ -87,7 +87,7 @@ struct fstab_rec *volume_for_name(const char *name)
 	return vol;
 }
 
-static void publish_part_data(struct fstab_rec *v, char *name)
+static void publish_part_data(bool wait, struct fstab_rec *v, char *name)
 {
 	char *buf;
 	uint64_t size;
@@ -96,7 +96,7 @@ static void publish_part_data(struct fstab_rec *v, char *name)
 
 	/* Keep trying for ctr seconds for the device node to show up.
 	 * ueventd may be busy creating the node */
-	while (ctr-- && stat(v->blk_device, &sb)) {
+	while (wait && ctr-- && stat(v->blk_device, &sb)) {
 		pr_debug("waiting for %s\n", v->blk_device);
 		sleep(1);
 	}
@@ -107,15 +107,16 @@ static void publish_part_data(struct fstab_rec *v, char *name)
 
 	buf = xasprintf("partition-size:%s", name);
 	if (get_volume_size(v, &size)) {
-		pr_error("Couldn't get %s (%s) volume size\n", name, v->blk_device);
-		fastboot_publish(buf,  xstrdup("0x0"));
+		if (wait)
+			pr_error("Couldn't get %s volume size\n", name);
+		fastboot_publish(buf, xstrdup("0x0"));
 	} else {
 		fastboot_publish(buf, xasprintf("0x%" PRIx64, size));
 	}
 	free(buf);
 }
 
-void publish_all_part_data(void)
+void publish_all_part_data(bool wait)
 {
 	int i;
 	for (i = 0; i < fstab->num_entries; i++) {
@@ -128,10 +129,10 @@ void publish_all_part_data(void)
 				!strcmp("/tmp", v->mount_point))
 			continue;
 
-		publish_part_data(v, v->mount_point + 1);
+		publish_part_data(wait, v, v->mount_point + 1);
 		/* Historical */
 		if (!strcmp("/data", v->mount_point))
-			publish_part_data(v, "userdata");
+			publish_part_data(wait, v, "userdata");
 	}
 }
 

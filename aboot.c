@@ -878,7 +878,7 @@ void aboot_register_commands(void)
 		pr_error("Memory allocation error\n");
 		die();
 	}
-	publish_all_part_data();
+	publish_all_part_data(false);
 
 	/* Currently we don't require signatures on images */
 	fastboot_publish("secure", xstrdup("no"));

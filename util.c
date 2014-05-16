@@ -443,7 +443,6 @@ int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 
 	fd = open(vol->blk_device, O_RDONLY);
 	if (fd < 0) {
-		pr_perror("open");
 		return -1;
 	}
 

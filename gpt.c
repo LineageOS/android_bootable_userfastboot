@@ -373,7 +373,7 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 
 	if (gpt_sync_ptable(ctx.gpt->device))
 		pr_warning("Couldn't re-read GPT, please reboot!\n");
-	publish_all_part_data();
+	publish_all_part_data(true);
 
 	if (ctx.esp_index) {
 		ret = execute_command("/sbin/efibootmgr -c -d %s -l %s -v -p %d -D %s -L %s",

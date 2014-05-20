@@ -714,6 +714,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_HIDETEXT) == 0) {
 		mui_show_text(0);
+		mui_set_background(BACKGROUND_ICON_INSTALLING);
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
 		set_loader_lock(true, false);

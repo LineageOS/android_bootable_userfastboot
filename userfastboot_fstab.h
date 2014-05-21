@@ -33,5 +33,9 @@ struct fstab_rec *volume_for_name(const char *name);
 // if wait is true, wait for device nodes to show up
 void publish_all_part_data(bool wait);
 
+// Get the name of the primary system disk. This is the largest
+// non-removable disk on the device
+char *get_primary_disk_name(void);
+
 #endif
 

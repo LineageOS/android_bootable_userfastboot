@@ -239,8 +239,6 @@ static bool confirm_oem_unlock(void)
 	int selected = 1;
 	bool result = false;
 
-	fastboot_info("Please confirm the OEM unlock action using the UI.");
-
 	char *headers[] = {
 		"**** Unlock bootloader? ****",
 		"",
@@ -261,7 +259,13 @@ static bool confirm_oem_unlock(void)
 		NULL };
 
 	mui_clear_key_queue();
-	mui_start_menu(headers, items, selected);
+
+	if (mui_start_menu(headers, items, selected)) {
+		/* Couldn't start the menu due to no graphics. Just do it. */
+		return true;
+	}
+
+	fastboot_info("Please confirm the OEM unlock action using the UI.");
 
 	while (chosen_item < 0) {
 		int key = mui_wait_key();

@@ -929,6 +929,7 @@ static int set_efi_var(int argc, char **argv)
 			EFI_VARIABLE_NON_VOLATILE |
 			EFI_VARIABLE_RUNTIME_ACCESS |
 			EFI_VARIABLE_BOOTSERVICE_ACCESS);
+	free(data);
 	if (ret)
 		pr_error("Couldn't set '%s' EFI variable to '%s'\n",
 				argv[1], argv[2]);

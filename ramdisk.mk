@@ -18,7 +18,6 @@ ufb_modules := \
 	mksh \
 	systembinsh \
 	sh \
-	su \
 	toolbox \
 	libext2fs \
 	libext2_com_err \
@@ -38,6 +37,10 @@ ufb_modules := \
 	init.utilitynet.sh \
 	dhcpcd \
 	pstore-clean
+
+ifneq ($(TARGET_BUILD_VARIANT),user)
+    ufb_modules += su
+endif
 
 ufb_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(ufb_modules)))
 

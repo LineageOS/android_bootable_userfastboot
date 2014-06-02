@@ -139,6 +139,26 @@ void xstring_append_line(char **str, const char *fmt, ...)
 }
 
 
+ssize_t robust_write(int fd, const void *buf, size_t count)
+{
+	const char *pos = buf;
+	ssize_t total_written = 0;
+
+	while (count) {
+		ssize_t written = write(fd, pos, count);
+		if (written < 0) {
+			if (errno == EINTR)
+				continue;
+			return -1;
+		}
+		count -= written;
+		pos += written;
+		total_written += written;
+	}
+	return total_written;
+}
+
+
 static void sparse_file_write_block(struct output_file *out,
 		struct backed_block *bb)
 {
@@ -456,6 +476,26 @@ int get_volume_size(struct fstab_rec *vol, uint64_t *sz)
 	close(fd);
 	return ret;
 }
+
+
+int64_t get_disk_size(const char *disk_name)
+{
+	int64_t disk_sectors, lba_size;
+
+	if (read_sysfs_int64(&disk_sectors, "/sys/block/%s/size", disk_name)) {
+		pr_error("couldn't read %s disk size", disk_name);
+		return -1;
+	}
+
+	if (read_sysfs_int64(&lba_size, "/sys/block/%s/queue/logical_block_size",
+			disk_name)) {
+		pr_error("couldn't read %s LBA size", disk_name);
+		return -1;
+	}
+
+	return disk_sectors * lba_size;
+}
+
 
 int mount_partition(struct fstab_rec *vol)
 {
@@ -825,7 +865,7 @@ int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
 	return ret;
 }
 
-static ssize_t robust_read(int fd, void *buf, size_t count, bool short_ok)
+ssize_t robust_read(int fd, void *buf, size_t count, bool short_ok)
 {
 	unsigned char *pos = buf;
 	ssize_t ret;

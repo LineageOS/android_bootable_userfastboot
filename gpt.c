@@ -279,7 +279,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 {
 	int ret = -1;
-	char *device, *plist, *buf;
+	char *device, *plist, *buf, *conf_device;
 	struct flash_gpt_context ctx;
 	uint64_t start_lba, end_lba, start_mb, end_mb;
 	uint64_t space_available_mb;
@@ -292,10 +292,11 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 		return -1;
 	}
 
-	device = iniparser_getstring(ctx.config, "base:device", NULL);
-	if (!device) {
-		pr_error("Configuration doesn't specify a device\n");
-		goto out;
+	conf_device = iniparser_getstring(ctx.config, "base:device", NULL);
+	if (!conf_device || !strcmp(conf_device, "auto")) {
+		device = xasprintf("/dev/block/%s", get_primary_disk_name());
+	} else {
+		device = xstrdup(conf_device);
 	}
 
 	plist = iniparser_getstring(ctx.config, "base:partitions", NULL);
@@ -391,6 +392,7 @@ out_free_gpt:
 	gpt_close(ctx.gpt);
 out:
 	iniparser_freedict(ctx.config);
+	free(device);
 
 	return ret;
 }

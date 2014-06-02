@@ -714,6 +714,7 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_HIDETEXT) == 0) {
 		mui_show_text(0);
+		mui_set_background(BACKGROUND_ICON_INSTALLING);
 		fastboot_okay("");
 	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
 		set_loader_lock(true, false);
@@ -813,6 +814,78 @@ static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
 static int start_adbd(int argc, char **argv)
 {
 	return system("adbd &");
+}
+
+#define CHUNK	1024LL * 1024LL
+static int garbage_disk(int argc, char **argv)
+{
+	char disk_path[PATH_MAX];
+	char *disk_name = NULL;
+	int ifd = -1;
+	int ofd = -1;
+	char *buf = NULL;
+	int64_t remaining_disk, disk_size;
+	int ret = -1;
+
+	if (argc == 2)
+		disk_name = xstrdup(argv[1]);
+	else
+		disk_name = get_primary_disk_name();
+
+	if (!disk_name)
+		goto out;
+
+	snprintf(disk_path, sizeof(disk_path), "/dev/block/%s", disk_name);
+
+	ofd = open(disk_path, O_WRONLY);
+	if (ofd < 0) {
+		pr_perror("open");
+		pr_error("open %s node\n", disk_path);
+		goto out;
+	}
+
+	remaining_disk = disk_size = get_disk_size(disk_name);
+
+	pr_status("Trashing %s contents...this can take a while", disk_name);
+
+	/* Get a big blob of pseudo-random data to write over and over again */
+	buf = xmalloc(CHUNK);
+	ifd = open("/dev/urandom", O_RDONLY);
+	if (ifd < 0) {
+		pr_perror("open /dev/urandom");
+		goto out;
+	}
+
+	if (robust_read(ifd, buf, CHUNK, false) != CHUNK) {
+		pr_error("couldn't read /dev/urandom\n");
+		goto out;
+	}
+
+	mui_show_progress(1.0, 0);
+	while (remaining_disk) {
+		ssize_t written, to_write;
+
+		mui_set_progress((float)(disk_size - remaining_disk) / (float)disk_size);
+
+		to_write = (CHUNK > disk_size) ? disk_size : CHUNK;
+		written = robust_write(ofd, buf, to_write);
+		if (written < 0) {
+			pr_error("couldn't write to the disk\n");
+			goto out;
+		}
+		remaining_disk -= written;
+	}
+	ret = 0;
+out:
+	if (ifd >= 0)
+		close(ifd);
+	if (ofd >= 0)
+		close(ofd);
+	mui_reset_progress();
+	free(disk_name);
+	free(buf);
+
+	return ret;
 }
 
 static void publish_from_prop(char *key, char *prop, char *dfl)
@@ -922,6 +995,7 @@ void aboot_register_commands(void)
 	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
 	aboot_register_oem_cmd("adbd", start_adbd);
+	aboot_register_oem_cmd("garbage-disk", garbage_disk);
 	register_userfastboot_plugins();
 
 	fastboot_publish("unlocked", xstrdup(is_loader_locked() ? "no" : "yes"));

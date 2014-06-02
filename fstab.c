@@ -24,6 +24,10 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <regex.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <linux/fs.h>
 
 #include <cutils/properties.h>
 #include <fs_mgr.h>
@@ -33,6 +37,8 @@
 #include "userfastboot.h"
 #include "userfastboot_ui.h"
 #include "userfastboot_util.h"
+
+#define DISK_MATCH_REGEX    "^[.]+|(ram|loop)[0-9]+|mmcblk[0-9]+(rpmb|boot[0-9]+)$"
 
 static struct fstab *fstab = NULL;
 
@@ -86,6 +92,60 @@ struct fstab_rec *volume_for_name(const char *name)
 	free(pat);
 	return vol;
 }
+
+char *get_primary_disk_name(void)
+{
+	DIR *dir;
+	int64_t largest = 0;
+	char *ret = NULL;
+	regex_t diskreg;
+
+	dir = opendir("/sys/block");
+	if (!dir) {
+		pr_error("opendir");
+		return NULL;
+	}
+
+	if (regcomp(&diskreg, DISK_MATCH_REGEX, REG_EXTENDED | REG_NOSUB)) {
+		pr_perror("regcomp");
+		die();
+	}
+
+	while (1) {
+		struct dirent *dp;
+		int64_t removable, disk_size;
+
+		dp = readdir(dir);
+		if (!dp)
+			break;
+
+		if (!regexec(&diskreg, dp->d_name, 0, NULL, 0)) {
+			pr_verbose("Skipping %s\n", dp->d_name);
+			continue;
+		}
+
+		if (read_sysfs_int64(&removable, "/sys/block/%s/removable",
+					dp->d_name))
+			continue;
+
+		if (removable) {
+			pr_verbose("%s is removable, skipping\n", dp->d_name);
+			continue;
+		}
+
+		disk_size = get_disk_size(dp->d_name);
+		pr_debug("%s --> %" PRId64 "M\n", dp->d_name, disk_size >> 20);
+		if (disk_size > largest) {
+			largest = disk_size;
+			if (ret)
+				free(ret);
+			ret = xstrdup(dp->d_name);
+		}
+	}
+
+	return ret;
+}
+
 
 static void publish_part_data(bool wait, struct fstab_rec *v, char *name)
 {

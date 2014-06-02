@@ -29,6 +29,8 @@ int is_valid_blkdev(const char *node);
 char *read_sysfs(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 int read_sysfs_int64(int64_t *val, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
 char *get_dmi_data(const char *node);
+ssize_t robust_read(int fd, void *buf, size_t count, bool short_ok);
+ssize_t robust_write(int fd, const void *buf, size_t count);
 
 /* Fails assertion if memory allocations fail */
 char *xstrdup(const char *s);
@@ -42,6 +44,7 @@ int erase_partition(struct fstab_rec *vol);
 int check_ext_superblock(struct fstab_rec *vol, int *sb_present);
 int unmount_partition(struct fstab_rec *vol);
 int get_volume_size(struct fstab_rec *vol, uint64_t *sz);
+int64_t get_disk_size(const char *disk_name);
 
 int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
 			int index, void *context), void *context);

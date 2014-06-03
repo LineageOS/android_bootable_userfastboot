@@ -125,7 +125,7 @@ typedef struct {
 	int install_overlay_offset_y;
 } UIParameters;
 
-void mui_start_menu(char** headers, char** items, int initial_selection);
+int mui_start_menu(char** headers, char** items, int initial_selection);
 int mui_menu_select(int sel);
 void mui_end_menu(void);
 int mui_key_pressed(int key);

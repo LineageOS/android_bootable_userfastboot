@@ -442,8 +442,12 @@ static void *input_thread(void *cookie)
 
 void mui_init(void)
 {
+	if (gr_init()) {
+		pr_error("couldn't initialize graphics subsystem\n");
+		return;
+	}
+
 	gInit = 1;
-	gr_init();
 	ev_init(input_callback, NULL);
 
 	text_col = text_row = 0;
@@ -711,9 +715,13 @@ void mui_print(const char *fmt, ...)
 
 }
 
-void mui_start_menu(char **headers, char **items, int initial_selection)
+int mui_start_menu(char **headers, char **items, int initial_selection)
 {
 	int i;
+
+	if (!gInit)
+		return -1;
+
 	pthread_mutex_lock(&gUpdateMutex);
 	if (text_rows > 0 && text_cols > 0) {
 		for (i = 0; i < text_rows; ++i) {
@@ -735,10 +743,14 @@ void mui_start_menu(char **headers, char **items, int initial_selection)
 		update_screen_locked();
 	}
 	pthread_mutex_unlock(&gUpdateMutex);
+	return 0;
 }
 
 int mui_menu_select(int sel)
 {
+	if (!gInit)
+		return 0;
+
 	int old_sel;
 	pthread_mutex_lock(&gUpdateMutex);
 	if (show_menu > 0) {
@@ -758,6 +770,9 @@ int mui_menu_select(int sel)
 
 void mui_end_menu()
 {
+	if (!gInit)
+		return;
+
 	pthread_mutex_lock(&gUpdateMutex);
 	if (show_menu > 0 && text_rows > 0 && text_cols > 0) {
 		show_menu = 0;
@@ -786,6 +801,9 @@ void mui_show_text(int visible)
 
 int mui_wait_key()
 {
+	if (!gInit)
+		return -1;
+
 	pthread_mutex_lock(&key_queue_mutex);
 
 	// Time out after UI_WAIT_KEY_TIMEOUT_SEC

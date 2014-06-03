@@ -186,6 +186,7 @@ void publish_all_part_data(bool wait)
 		 * be there, Skip anything that begins with /sdcard.
 		 * skip the fake /tmp entry too */
 		if (!strncmp("/sdcard", v->mount_point, 7) ||
+				!strcmp("auto", v->mount_point) ||
 				!strcmp("/tmp", v->mount_point))
 			continue;
 

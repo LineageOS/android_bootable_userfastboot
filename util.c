@@ -306,7 +306,7 @@ int named_file_write(const char *filename, const unsigned char *what,
 	size_t sz_orig = sz;
 	size_t count = 0;
 
-	flags = O_RDWR | (append ? O_APPEND : O_CREAT);
+	flags = O_RDWR | (append ? O_APPEND : (O_CREAT | O_TRUNC));
 	if (flags & O_CREAT)
 		fd = open(filename, flags, 0600);
 	else

@@ -477,47 +477,6 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
 
 }
 
-static int cmd_flash_ota_update(Hashmap *params, int *fd, unsigned sz)
-{
-	struct fstab_rec *cachevol;
-	int action = !hashmapContainsKey(params, "noaction");
-	int append = hashmapContainsKey(params, "append");
-	void *data = NULL;
-
-        cachevol = volume_for_path("/cache");
-	if (!cachevol) {
-		pr_error("Couldn't find cache partition. Is your recovery.fstab valid?\n");
-		return -1;
-	}
-	if (mount_partition(cachevol)) {
-		pr_error("Couldn't mount cache partition\n");
-		return -1;
-	}
-
-	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
-	if (data == (void*)-1){
-		pr_error("Failed to mmap the file\n");
-		return -1;
-	}
-
-	/* Once the update is applied this file is deleted */
-	if (named_file_write("/mnt/cache/userfastboot.update.zip",
-				data, sz, 0, append)) {
-		pr_error("Couldn't write update package to cache partition.\n");
-		unmount_partition(cachevol);
-		munmap(data, sz);
-		return -1;
-	}
-	unmount_partition(cachevol);
-	munmap(data, sz);
-
-	if (action) {
-		apply_sw_update("/cache/userfastboot.update.zip", 1);
-		return -1;
-	}
-	return 0;
-}
-
 /* Image command. Allows user to send a single file which
  * will be written to a destination location. Typical
  * usage is to write to a disk device node, in order to flash a raw
@@ -1040,7 +999,6 @@ void aboot_register_commands(void)
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
-	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
 	aboot_register_oem_cmd("adbd", start_adbd);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk);

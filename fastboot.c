@@ -40,6 +40,8 @@
 #include <poll.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <linux/usb/ch9.h>
+#include <linux/usb/functionfs.h>
 
 #include <cutils/hashmap.h>
 
@@ -48,8 +50,124 @@
 #include "fastboot.h"
 #include "userfastboot_util.h"
 
+
+#define USB_ADB_PATH      "/dev/android_adb"
+#define USB_FFS_ADB_PATH  "/dev/usb-ffs/adb/"
+#define USB_FFS_ADB_EP(x) USB_FFS_ADB_PATH#x
+#define USB_FFS_ADB_EP0   USB_FFS_ADB_EP(ep0)
+#define USB_FFS_ADB_OUT   USB_FFS_ADB_EP(ep1)
+#define USB_FFS_ADB_IN    USB_FFS_ADB_EP(ep2)
+
+
+#define ADB_CLASS              0xff
+#define ADB_SUBCLASS           0x42
+#define FASTBOOT_PROTOCOL      0x3
 #define MAGIC_LENGTH 64
 #define XFER_MEM_SIZE 4096*1024
+
+#define cpu_to_le16(x)  htole16(x)
+#define cpu_to_le32(x)  htole32(x)
+
+
+#define MAX_PACKET_SIZE_FS	64
+#define MAX_PACKET_SIZE_HS	512
+#define MAX_PACKET_SIZE_SS	1024
+struct io_fds
+{
+	int read_fp;
+	int write_fp;
+};
+static struct io_fds io;
+
+static const struct {
+	struct usb_functionfs_descs_head header;
+	struct {
+		struct usb_interface_descriptor intf;
+		struct usb_endpoint_descriptor_no_audio source;
+		struct usb_endpoint_descriptor_no_audio sink;
+	} __attribute__((packed)) fs_descs, hs_descs;
+} __attribute__((packed)) descriptors = {
+	.header = {
+		.magic = cpu_to_le32(FUNCTIONFS_DESCRIPTORS_MAGIC),
+		.length = cpu_to_le32(sizeof(descriptors)),
+		.fs_count = 3,
+		.hs_count = 3,
+	},
+	.fs_descs = {
+		.intf = {
+			.bLength = sizeof(descriptors.fs_descs.intf),
+			.bDescriptorType = USB_DT_INTERFACE,
+			.bInterfaceNumber = 0,
+			.bNumEndpoints = 2,
+			.bInterfaceClass = ADB_CLASS,
+			.bInterfaceSubClass = ADB_SUBCLASS,
+			.bInterfaceProtocol = FASTBOOT_PROTOCOL,
+			.iInterface = 1, /* first string from the provided table */
+		},
+		.source = {
+			.bLength = sizeof(descriptors.fs_descs.source),
+			.bDescriptorType = USB_DT_ENDPOINT,
+			.bEndpointAddress = 1 | USB_DIR_OUT,
+			.bmAttributes = USB_ENDPOINT_XFER_BULK,
+			.wMaxPacketSize = MAX_PACKET_SIZE_FS,
+		},
+		.sink = {
+			.bLength = sizeof(descriptors.fs_descs.sink),
+			.bDescriptorType = USB_DT_ENDPOINT,
+			.bEndpointAddress = 2 | USB_DIR_IN,
+			.bmAttributes = USB_ENDPOINT_XFER_BULK,
+			.wMaxPacketSize = MAX_PACKET_SIZE_FS,
+		},
+	},
+	.hs_descs = {
+		.intf = {
+			.bLength = sizeof(descriptors.hs_descs.intf),
+			.bDescriptorType = USB_DT_INTERFACE,
+			.bInterfaceNumber = 0,
+			.bNumEndpoints = 2,
+			.bInterfaceClass = ADB_CLASS,
+			.bInterfaceSubClass = ADB_SUBCLASS,
+			.bInterfaceProtocol = FASTBOOT_PROTOCOL,
+			.iInterface = 1, /* first string from the provided table */
+		},
+		.source = {
+			.bLength = sizeof(descriptors.hs_descs.source),
+			.bDescriptorType = USB_DT_ENDPOINT,
+			.bEndpointAddress = 1 | USB_DIR_OUT,
+			.bmAttributes = USB_ENDPOINT_XFER_BULK,
+			.wMaxPacketSize = MAX_PACKET_SIZE_HS,
+		},
+		.sink = {
+			.bLength = sizeof(descriptors.hs_descs.sink),
+			.bDescriptorType = USB_DT_ENDPOINT,
+			.bEndpointAddress = 2 | USB_DIR_IN,
+			.bmAttributes = USB_ENDPOINT_XFER_BULK,
+			.wMaxPacketSize = MAX_PACKET_SIZE_HS,
+		},
+	},
+};
+
+#define STR_INTERFACE_ "FASTBOOT Interface"
+
+static const struct {
+	struct usb_functionfs_strings_head header;
+	struct {
+		__le16 code;
+		const char str1[sizeof(STR_INTERFACE_)];
+	} __attribute__((packed)) lang0;
+} __attribute__((packed)) strings = {
+	.header = {
+		.magic = cpu_to_le32(FUNCTIONFS_STRINGS_MAGIC),
+		.length = cpu_to_le32(sizeof(strings)),
+		.str_count = cpu_to_le32(1),
+		.lang_count = cpu_to_le32(1),
+	},
+	.lang0 = {
+		cpu_to_le16(0x0409), /* en-us */
+		STR_INTERFACE_,
+	},
+};
+
 
 struct fastboot_cmd {
 	struct fastboot_cmd *next;
@@ -115,8 +233,6 @@ static pid_t fastboot_pid;
 #define STATE_ERROR	3
 
 static unsigned fastboot_state = STATE_OFFLINE;
-int fb_fp = -1;
-int enable_fp;
 
 static int usb_read(void *_buf, unsigned len)
 {
@@ -133,7 +249,7 @@ static int usb_read(void *_buf, unsigned len)
 	while (len > 0) {
 		xfer = (len > 4096) ? 4096 : len;
 
-		r = read(fb_fp, buf, xfer);
+		r = read(io.read_fp, buf, xfer);
 		if (r < 0) {
 			pr_perror("read");
 			goto oops;
@@ -162,19 +278,24 @@ oops:
 	return -1;
 }
 
-static int usb_write(void *buf, unsigned len)
+static int usb_write(void *_buf, unsigned len)
 {
 	int r;
+	size_t count = 0;
+	unsigned char *buf = _buf;
 
 	pr_verbose("usb_write %d\n", len);
 	if (fastboot_state == STATE_ERROR)
 		goto oops;
 
-	r = write(fb_fp, buf, len);
+	do {
+		r = write(io.write_fp, buf + count, len - count);
 	if (r < 0) {
 		pr_perror("write");
 		goto oops;
 	}
+		 count += r;
+	} while (count < len);
 
 	return r;
 
@@ -444,31 +565,131 @@ static int open_tcp(void)
 	return tcp_fd;
 }
 
+static int enable_ffs = 0;
+
+static int open_usb_fd(void)
+{
+	io.read_fp = open(USB_ADB_PATH, O_RDWR);
+	/* tip to reuse same usb_read() and usb_write() than ffs */
+	io.write_fp = io.read_fp;
+
+	return io.read_fp;
+}
+static int open_usb_ffs(void)
+{
+	ssize_t ret;
+	int control_fp;
+
+	control_fp = open(USB_FFS_ADB_EP0, O_RDWR);
+	if (control_fp < 0) {
+		pr_info("[ %s: cannot open control endpoint: errno=%d]\n", USB_FFS_ADB_EP0, errno);
+		goto err;
+	}
+
+	ret = write(control_fp, &descriptors, sizeof(descriptors));
+	if (ret < 0) {
+		pr_info("[ %s: write descriptors failed: errno=%d ]\n", USB_FFS_ADB_EP0, errno);
+		goto err;
+	}
+
+	ret = write(control_fp, &strings, sizeof(strings));
+	if (ret < 0) {
+		pr_info("[ %s: writing strings failed: errno=%d]\n", USB_FFS_ADB_EP0, errno);
+		goto err;
+	}
+
+	io.read_fp = open(USB_FFS_ADB_OUT, O_RDWR);
+	if (io.read_fp < 0) {
+		pr_info("[ %s: cannot open bulk-out ep: errno=%d ]\n", USB_FFS_ADB_OUT, errno);
+		goto err;
+	}
+
+	io.write_fp = open(USB_FFS_ADB_IN, O_RDWR);
+	if (io.write_fp < 0) {
+		pr_info("[ %s: cannot open bulk-in ep: errno=%d ]\n", USB_FFS_ADB_IN, errno);
+		goto err;
+	}
+
+	pr_info("Fastboot opened on %s\n", USB_FFS_ADB_PATH);
+
+	close(control_fp);
+	control_fp = -1;
+	return io.read_fp;
+
+err:
+	if (io.write_fp > 0) {
+		close(io.write_fp);
+		io.write_fp = -1;
+	}
+	if (io.read_fp > 0) {
+		close(io.read_fp);
+		io.read_fp = -1;
+	}
+	if (control_fp > 0) {
+		close(control_fp);
+		control_fp = -1;
+	}
+
+	return -1;
+}
+
+/**
+ * Opens the file descriptor either using first /dev/android_adb if exists
+ * otherwise the ffs one /dev/usb-ffs/adb/
+ * */
 static int open_usb(void)
 {
-	int usb_fp;
+	int ret = 0;
 	static int printed = 0;
 
-	usb_fp = open("/dev/android_adb", O_RDWR);
+	enable_ffs = 0;
+	/* first try /dev/android_adb */
+	ret = open_usb_fd();
 
+	if (ret < 1) {
+    		/* next /dev/usb-ffs/adb */
+    		enable_ffs = 1;
+		ret = open_usb_ffs();
+    	}
 	if (!printed) {
-		if (usb_fp < 1)
+		if (ret < 1) {
 			pr_info("Can't open ADB device node (%s),"
 				" Listening on TCP only.\n",
 				strerror(errno));
-		else
-			pr_info("Listening on /dev/android_adb\n");
+		} else {
+			if (enable_ffs)
+				pr_info("Listening on /dev/usb-ffs/adb/...\n");
+			else
+				pr_info("Listening on /dev/android_adb\n");
+		}
 		printed = 1;
 	}
-
-	return usb_fp;
+	return ret;
 }
+
+/**
+ * Force to close file descriptor used at open_usb()
+ * */
+static void close_iofds(void)
+{
+	if (io.write_fp > 0) {
+		close(io.write_fp);
+		io.write_fp = -1;
+	}
+	if (io.read_fp > 0) {
+		if (enable_ffs)
+			close(io.read_fp);
+		io.read_fp = -1;
+	}
+}
+
 
 int fastboot_handler(void)
 {
 	int usb_fd_idx = 0;
 	int tcp_fd_idx = 1;
 	int const nfds = 2;
+
 	struct pollfd fds[nfds];
 
 	memset(&fds, sizeof fds, 0);
@@ -497,21 +718,21 @@ int fastboot_handler(void)
 		}
 
 		if (fds[usb_fd_idx].revents & POLLIN) {
-			fb_fp = fds[usb_fd_idx].fd;
 			fastboot_command_loop();
-			close(fb_fp);
+			close_iofds();
 			fds[usb_fd_idx].fd = -1;
 		}
 
 		if (fds[tcp_fd_idx].revents & POLLIN) {
-			fb_fp = accept(fds[tcp_fd_idx].fd, NULL, NULL);
-			if (fb_fp < 0)
+			io.read_fp = accept(fds[tcp_fd_idx].fd, NULL, NULL);
+			if (io.read_fp < 0)
 				pr_error("Accept failure: %s\n", strerror(errno));
-			else
+			else {
+				io.write_fp = io.read_fp;
 				fastboot_command_loop();
-			close(fb_fp);
+			}
+			close_iofds();
 		}
-		fb_fp = -1;
 	}
 	return 0;
 }

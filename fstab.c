@@ -53,7 +53,7 @@ void load_volume_table()
 		return;
 	}
 
-	ret = fs_mgr_add_entry(fstab, "/tmp", "ramdisk", "ramdisk", 0);
+	ret = fs_mgr_add_entry(fstab, "/tmp", "ramdisk", "ramdisk");
 	if (ret < 0) {
 		pr_error("failed to add /tmp entry to fstab\n");
 		fs_mgr_free_fstab(fstab);

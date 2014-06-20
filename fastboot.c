@@ -514,11 +514,13 @@ again:
 				    &fd, download_size);
 			pthread_mutex_unlock(&action_mutex);
 
-                        if (fd >= 0)
+			if (fd >= 0)
 				close(fd);
 
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");
+			else if (fastboot_state == STATE_COMPLETE)
+				pr_status("Awaiting commands...\n");
 			goto again;
 		}
 		pr_error("unknown command '%s'\n", buffer);

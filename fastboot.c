@@ -252,7 +252,7 @@ static int usb_read(void *_buf, unsigned len)
 
 		r = read(io.read_fp, buf, xfer);
 		if (r < 0) {
-			pr_perror("read");
+			pr_warning("read");
 			goto oops;
 		} else if (r == 0) {
 			pr_debug("Connection closed\n");

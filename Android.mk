@@ -18,10 +18,14 @@ LOCAL_SRC_FILES := \
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wno-unused-parameter -Wno-format-zero-length -Werror
 
+ifeq (true,$(TARGET_PREFER_32_BIT_EXECUTABLES))
+# We are doing a 32p build, force recovery to be 64bit
+LOCAL_MULTILIB := 64
+endif
+
 LOCAL_MODULE := userfastboot
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_PATH := $(PRODUCT_OUT)/userfastboot
-LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
 LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
 LOCAL_STATIC_LIBRARIES += libsparse_static libminui libpng \
 			  libselinux libfs_mgr libstdc++ libiniparser libgpt_static \

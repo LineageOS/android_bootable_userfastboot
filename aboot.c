@@ -756,6 +756,45 @@ out:
 	}
 }
 
+
+static int cmd_flash_sfu(Hashmap *params, int *fd, unsigned sz)
+{
+	struct fstab_rec *vol_bootloader;
+	void *data;
+	int ret = -1;
+
+	vol_bootloader = volume_for_name("bootloader");
+	if (vol_bootloader == NULL) {
+		pr_error("/bootloader not defined in fstab\n");
+		fastboot_fail("can't find bootloader partition");
+		return -1;
+	}
+	if (mount_partition(vol_bootloader)) {
+		pr_error("Couldn't mount bootloader partition!\n");
+		fastboot_fail("couldn't mount bootloader partition");
+		return -1;
+	}
+	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
+	if (data == (void*)-1){
+		pr_error("Failed to mmap the file\n");
+		goto out;
+	}
+
+	if (named_file_write("/mnt/bootloader/BIOSUPDATE.fv",
+				data, sz, 0, 0)) {
+		pr_error("Couldn't write SFU capsule image to bootloader partition.\n");
+		goto out_unmap;
+	}
+	fastboot_info("SFU capsule will be applied on next reboot");
+	ret = 0;
+out_unmap:
+	munmap(data, sz);
+out:
+	unmount_partition(vol_bootloader);
+	return ret;
+}
+
+
 static void cmd_reboot(char *arg, int *fd, unsigned sz)
 {
 	fastboot_okay("");
@@ -1000,6 +1039,7 @@ void aboot_register_commands(void)
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
+	aboot_register_flash_cmd("sfu", cmd_flash_sfu);
 	aboot_register_oem_cmd("adbd", start_adbd);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk);
 	aboot_register_oem_cmd("setvar", set_efi_var);

@@ -306,7 +306,6 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	int ret;
 	char *data;
-	bool wiped = false;
 
 	data = state ? "1" : "0";
 
@@ -327,7 +326,6 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 			pr_status("Userdata erase required, this can take a while...\n");
 			fastboot_info("Userdata erase required, this can take a while...\n");
 
-			wiped = true;
 			if (erase_partition(vol)) {
 				pr_error("couldn't erase data partition\n");
 				return -1;
@@ -348,11 +346,6 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 	if (state == false) {
 		if (!is_loader_locked()) {
 			pr_info("Fastboot now unlocked\n");
-			if (wiped) {
-				fastboot_info("Rebooting to wipe RAM contents");
-				fastboot_okay("");
-				android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
-			}
 			fastboot_publish("unlocked", xstrdup("yes"));
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");
@@ -475,47 +468,6 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
 	else
 		fastboot_okay("");
 
-}
-
-static int cmd_flash_ota_update(Hashmap *params, int *fd, unsigned sz)
-{
-	struct fstab_rec *cachevol;
-	int action = !hashmapContainsKey(params, "noaction");
-	int append = hashmapContainsKey(params, "append");
-	void *data = NULL;
-
-        cachevol = volume_for_path("/cache");
-	if (!cachevol) {
-		pr_error("Couldn't find cache partition. Is your recovery.fstab valid?\n");
-		return -1;
-	}
-	if (mount_partition(cachevol)) {
-		pr_error("Couldn't mount cache partition\n");
-		return -1;
-	}
-
-	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
-	if (data == (void*)-1){
-		pr_error("Failed to mmap the file\n");
-		return -1;
-	}
-
-	/* Once the update is applied this file is deleted */
-	if (named_file_write("/mnt/cache/userfastboot.update.zip",
-				data, sz, 0, append)) {
-		pr_error("Couldn't write update package to cache partition.\n");
-		unmount_partition(cachevol);
-		munmap(data, sz);
-		return -1;
-	}
-	unmount_partition(cachevol);
-	munmap(data, sz);
-
-	if (action) {
-		apply_sw_update("/cache/userfastboot.update.zip", 1);
-		return -1;
-	}
-	return 0;
 }
 
 /* Image command. Allows user to send a single file which
@@ -797,6 +749,45 @@ out:
 	}
 }
 
+
+static int cmd_flash_sfu(Hashmap *params, int *fd, unsigned sz)
+{
+	struct fstab_rec *vol_bootloader;
+	void *data;
+	int ret = -1;
+
+	vol_bootloader = volume_for_name("bootloader");
+	if (vol_bootloader == NULL) {
+		pr_error("/bootloader not defined in fstab\n");
+		fastboot_fail("can't find bootloader partition");
+		return -1;
+	}
+	if (mount_partition(vol_bootloader)) {
+		pr_error("Couldn't mount bootloader partition!\n");
+		fastboot_fail("couldn't mount bootloader partition");
+		return -1;
+	}
+	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
+	if (data == (void*)-1){
+		pr_error("Failed to mmap the file\n");
+		goto out;
+	}
+
+	if (named_file_write("/mnt/bootloader/BIOSUPDATE.fv",
+				data, sz, 0, 0)) {
+		pr_error("Couldn't write SFU capsule image to bootloader partition.\n");
+		goto out_unmap;
+	}
+	fastboot_info("SFU capsule will be applied on next reboot");
+	ret = 0;
+out_unmap:
+	munmap(data, sz);
+out:
+	unmount_partition(vol_bootloader);
+	return ret;
+}
+
+
 static void cmd_reboot(char *arg, int *fd, unsigned sz)
 {
 	fastboot_okay("");
@@ -1040,8 +1031,8 @@ void aboot_register_commands(void)
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
-	aboot_register_flash_cmd("ota", cmd_flash_ota_update);
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
+	aboot_register_flash_cmd("sfu", cmd_flash_sfu);
 	aboot_register_oem_cmd("adbd", start_adbd);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk);
 	aboot_register_oem_cmd("setvar", set_efi_var);

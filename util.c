@@ -306,7 +306,7 @@ int named_file_write(const char *filename, const unsigned char *what,
 	size_t sz_orig = sz;
 	size_t count = 0;
 
-	flags = O_RDWR | (append ? O_APPEND : O_CREAT);
+	flags = O_RDWR | (append ? O_APPEND : (O_CREAT | O_TRUNC));
 	if (flags & O_CREAT)
 		fd = open(filename, flags, 0600);
 	else
@@ -763,46 +763,6 @@ int is_valid_blkdev(const char *node)
 		return 0;
 
 	return 1;
-}
-
-
-void apply_sw_update(const char *location, int send_fb_ok)
-{
-	struct fstab_rec *cachevol;
-	char *cmdline;
-
-	cmdline = xasprintf("--update_package=%s", location);
-
-	cachevol = volume_for_path("/cache");
-	if (!cachevol) {
-		pr_error("Couldn't find cache partition. Is your "
-				"recovery.fstab valid?\n");
-		goto out;
-	}
-	if (mount_partition(cachevol)) {
-		pr_error("Couldn't mount cache partition.\n");
-		goto out;
-	}
-
-	if (mkdir("/mnt/cache/recovery", 0777) && errno != EEXIST) {
-		pr_error("Couldn't create /mnt/cache/recovery directory\n");
-		goto out;
-	}
-
-	if (named_file_write("/mnt/cache/recovery/command", (void *)cmdline,
-				strlen(cmdline), 0, 0)) {
-		pr_error("Couldn't create recovery console command file\n");
-		goto out;
-	}
-
-	pr_info("Rebooting into recovery console to apply update\n");
-	if (send_fb_ok)
-		fastboot_okay("");
-	android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
-out:
-	if(cachevol)
-		unmount_partition(cachevol);
-	free(cmdline);
 }
 
 

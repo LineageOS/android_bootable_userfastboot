@@ -306,7 +306,6 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	int ret;
 	char *data;
-	bool wiped = false;
 
 	data = state ? "1" : "0";
 
@@ -327,7 +326,6 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 			pr_status("Userdata erase required, this can take a while...\n");
 			fastboot_info("Userdata erase required, this can take a while...\n");
 
-			wiped = true;
 			if (erase_partition(vol)) {
 				pr_error("couldn't erase data partition\n");
 				return -1;
@@ -348,11 +346,6 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 	if (state == false) {
 		if (!is_loader_locked()) {
 			pr_info("Fastboot now unlocked\n");
-			if (wiped) {
-				fastboot_info("Rebooting to wipe RAM contents");
-				fastboot_okay("");
-				android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
-			}
 			fastboot_publish("unlocked", xstrdup("yes"));
 		} else {
 			pr_error("Inconsistent OEMLock state!!\n");

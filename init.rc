@@ -2,6 +2,7 @@ import /init.userfastboot.rc
 import /init.recovery.${ro.hardware}.rc
 
 on early-init
+    setenforce 0
     loglevel 7
     start ueventd
 

@@ -19,15 +19,6 @@ on init
     # Erasing partitions can take a long time, don't whine about it
     write /proc/sys/kernel/hung_task_timeout_secs 0
 
-    # USB Gadget initialization
-    write /sys/class/android_usb/android0/enable 0
-    write /sys/class/android_usb/android0/iManufacturer Intel
-    write /sys/class/android_usb/android0/iSerial </sys/devices/pci0000:00/0000:00:01.0/mmc_host/mmc0/mmc0:0001/cid
-    write /sys/class/android_usb/android0/functions adb
-    write /sys/class/android_usb/android0/idVendor 8087
-    write /sys/class/android_usb/android0/idProduct 0829
-    write /sys/class/android_usb/android0/enable 1
-
 on fs
     mount efivarfs none /sys/firmware/efi/efivars
 

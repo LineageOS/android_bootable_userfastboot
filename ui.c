@@ -373,7 +373,7 @@ static void *progress_thread(void *cookie)
 
 static int rel_sum = 0;
 
-static int input_callback(int fd, short revents, void *data)
+static int input_callback(int fd, uint32_t revents, void *data)
 {
 	struct input_event ev;
 	int ret;

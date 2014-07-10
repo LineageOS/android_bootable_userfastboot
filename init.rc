@@ -19,6 +19,21 @@ on init
     # Erasing partitions can take a long time, don't whine about it
     write /proc/sys/kernel/hung_task_timeout_secs 0
 
+# Mount filesystems and start core system services.
+on late-init
+    trigger early-fs
+    trigger fs
+    trigger post-fs
+    trigger post-fs-data
+
+    # Load properties from /system/ + /factory after fs mount. Place
+    # this in another action so that the load will be scheduled after the prior
+    # issued fs triggers have completed.
+    trigger load_all_props_action
+
+    trigger early-boot
+    trigger boot
+
 on fs
     mount efivarfs none /sys/firmware/efi/efivars
 
@@ -32,7 +47,6 @@ service ueventd /sbin/ueventd
     critical
 
 service userfastboot /sbin/userfastboot
-    default
     oneshot
 
 service console /system/bin/sh
@@ -46,6 +60,5 @@ on property:ro.debuggable=1
     start console
 
 service pstore-clean /system/bin/pstore-clean
-    default
     oneshot
 

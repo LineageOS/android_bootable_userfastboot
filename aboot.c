@@ -750,6 +750,7 @@ out:
 	if (success) {
 		pr_info("Booting into supplied image...\n");
 		fastboot_okay("");
+		close_iofds();
 		android_reboot(ANDROID_RB_RESTART, 0, 0);
 		pr_error("Reboot failed\n");
 	}
@@ -798,6 +799,7 @@ static void cmd_reboot(char *arg, int *fd, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
+	close_iofds();
 	pr_info("Rebooting!\n");
 	android_reboot(ANDROID_RB_RESTART, 0, 0);
 	pr_error("Reboot failed\n");
@@ -807,6 +809,7 @@ static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
+	close_iofds();
 	pr_info("Restarting UserFastBoot...\n");
 	android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
 	pr_error("Reboot failed\n");

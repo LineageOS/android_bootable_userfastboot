@@ -672,7 +672,7 @@ static int open_usb(void)
 /**
  * Force to close file descriptor used at open_usb()
  * */
-static void close_iofds(void)
+void close_iofds(void)
 {
 	if (io.write_fp > 0) {
 		close(io.write_fp);

@@ -58,6 +58,11 @@ void fastboot_okay(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)))
  * on the heap; free it after publishing if you need to */
 void fastboot_publish(char *name, char *value);
 
+/**
+ * Force to close file descriptor used at open_usb()
+ * */
+void close_iofds(void);
+
 #endif
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround

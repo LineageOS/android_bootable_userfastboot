@@ -76,114 +76,143 @@
 
 #define CMD_SHOWTEXT		"showtext"
 #define CMD_HIDETEXT		"hidetext"
+
 #define CMD_LOCK		"lock"
+#define CMD_LOCK_NC		"lock-noconfirm"
 #define CMD_UNLOCK		"unlock"
-#define CMD_UNLOCK_NOCONFIRM	"unlock-noconfirm"
+#define CMD_UNLOCK_NC		"unlock-noconfirm"
+#define CMD_VERIFIED		"verified"
+#define CMD_VERIFIED_NC		"verified-noconfirm"
 
 #define FASTBOOT_GUID \
 	EFI_GUID(0x1ac80a82, 0x4f0c, 0x456b, 0x9a99, 0xde, 0xbe, 0xb4, 0x31, 0xfc, 0xc1);
+
+/* Current device state, set here, affects how bootloader functions */
 #define OEM_LOCK_VAR		"OEMLock"
+#define OEM_LOCK_UNLOCKED	(1 << 0)
+#define OEM_LOCK_VERIFIED	(1 << 1)
+
+/* Boot state as reported by the loader */
+#define BOOT_STATE_VAR		"BootState"
+#define BOOT_STATE_GREEN	0
+#define BOOT_STATE_YELLOW	1
+#define BOOT_STATE_ORANGE	2
+#define BOOT_STATE_RED		3
+
+/* EFI Variable to store user-supplied key store binary data */
+#define KEYSTORE_VAR		"KeyStore"
 
 #define EFI_GLOBAL_VARIABLE \
 	EFI_GUID(0x8BE4DF61, 0x93CA, 0x11d2, 0xAA0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C);
 #define SECURE_BOOT_VAR		"SecureBoot"
+
+/* Initial list of flash targets that are allowed in VERIFIED state */
+static char *default_flash_whitelist[] = {
+	"bootloader",
+	"boot",
+	"system",
+	"oem", /* alternate name for vendor */
+	"vendor",
+	"recovery",
+	"fastboot", /* counts as part of the bootloader */
+	/* Following three needed even though not specifically listed
+	 * since formatting a partition necessitates flashing a sparse
+	 * filesystem image */
+	"cache",
+	"data",
+	"userdata",
+	NULL
+};
+
+/* Initial list of erase targets which are allowed in VERIFIED state */
+static char *default_erase_whitelist[] = {
+	"cache",
+	"data",
+	"userdata",
+	/* following three needed so we can flash them even though not
+	 * specifically listed, they all contain filesystems which can
+	 * be sent over as sparse images */
+	"system",
+	"vendor",
+	"oem",
+	NULL
+};
 
 struct flash_target {
 	char *name;
 	Hashmap *params;
 };
 
+struct cmd_struct {
+	void *callback;
+	enum device_state min_state;
+};
+
 Hashmap *flash_cmds;
 Hashmap *oem_cmds;
+Hashmap *flash_whitelist;
+Hashmap *erase_whitelist;
 
-/*
+static char *unlock_headers[] = {
+	"**** Unlock bootloader? ****",
+	"",
+	"If you unlock the bootloader, you will be able to install custom operating",
+	"system software on this device and such software will not be verified at boot.",
+	"",
+	"Changing device state will also delete all personal data rom your device",
+	"(a 'factory data reset').",
+	"",
+	"Press the Volume Up/Down to select Yes or No. Then press the Power button.",
+	"",
+	NULL };
 
-Unlockable Android devices must securely erase all user data prior to being
-unlocked. The failure to properly delete all data on unlocking may allow a
-physically proximate attacker to gain unauthorized access to confidential
-Android user data. We?ve seen numerous instances where device manufacturers
-improperly implemented unlocking. This e-mail describes best practices for
-implementing the unlock data wipe requirement.
+static char *lock_headers[] = {
+	"**** Lock bootloader? ****",
+	"",
+	"If you lock the bootloader, you will prevent the device from having any",
+	"custom software flashed until it is again set to 'unlocked' or 'verified'",
+	"state.",
+	"",
+	"Changing device state will also delete all personal data rom your device",
+	"(a 'factory data reset').",
+	"",
+	"Press the Volume Up/Down to select Yes or No. Then press the Power button.",
+	"",
+	NULL };
 
-Details
+static char *verified_headers[] = {
+	"**** Set bootloader to Verified? ****",
+	"",
+	"If you set the loader to Verified state, you may flash custom software to",
+	"the device and the loader will attempt to verify these custom images against",
+	"either the OEM keystore or a keystore supplied by you. Some, but not all",
+	"fastboot commands will be available.",
+	"",
+	"Changing device state will also delete all personal data rom your device",
+	"(a 'factory data reset').",
+	"",
+	"Press the Volume Up/Down to select Yes or No. Then press the Power button.",
+	"",
+	NULL };
 
-Many Android devices support unlocking. This allows the device owner to modify
-the system partition and/or install a custom operating system. Common use cases
-for this include installing a third-party ROM, and/or doing systems level
-development on the device.
 
-For example, on Google Nexus devices, an end user can run ?fastboot oem unlock?
-to start the unlocking process. When an end user runs this command, the
-following message is displayed:
+static const char *state_to_string(enum device_state ds)
+{
+	switch (ds) {
+	case UNLOCKED:
+		return "unlocked";
+	case LOCKED:
+		return "locked";
+	case VERIFIED:
+		return "verified";
+	}
+	/* silence warning, shouldn't get here */
+	die();
+	return NULL;
+}
 
-Unlock bootloader?
 
-If you unlock the bootloader, you will be able to install custom operating
-system software on this phone.
-
-A custom OS is not subject to the same testing as the original OS, and can
-cause your phone and installed applications to stop working properly.
-
-To prevent unauthorized access to your personal data, unlocking the bootloader
-will also delete all personal data from your phone (a ?factory data reset?).
-
-Press the Volume Up/Down buttons to select Yes or No. Then press the Power
-button to continue.
-
-Yes: Unlock bootloader (may void warranty) No: Do not unlock bootloader and
-restart phone.
-
-A device which is unlocked may be subsequently relocked, by issuing the
-?fastboot oem lock? command. Locking the bootloader provides the same
-protection of user data with the new custom OS as was available with the
-original OEM OS. e.g. user data will be wiped if the device is unlocked again
-in the future
-
-To prevent the disclosure of user data, a device which supports unlocking needs
-to implement it properly. We?ve seen multiple public vulnerability reports
-describing flaws in the unlocking process, including:
-
-https://plus.sandbox.google.com/117003401706323264508/posts/7jYeE7NUbzi
-http://forum.xda-developers.com/showthread.php?t=2266928
-
-A properly implemented unlocking process will have the following properties:
-
-1. When the unlocking command is confirmed by the user, the device MUST start
-an immediate data wipe. The ?unlocked? flag MUST NOT be set until after the
-secure deletion is complete.
-
-2. If a secure deletion cannot be completed, the device MUST stay in a locked
-state.
-
-3. If supported by the underlying block device, ?ioctl(BLKSECDISCARD)? or
-equivalent SHOULD be used. For eMMC devices, this means using a Secure Erase or
-Secure Trim command. For eMMC 4.5 and later, this means doing a normal Erase or
-Trim followed by a Sanitize operation.
-
-4. If BLKSECDISCARD is NOT supported by the underlying block device,
-?ioctl(BLKDISCARD)? MUST be used instead. On eMMC devices, this is a normal
-Trim operation.
-
-5. If BLKDISCARD is NOT supported, overwriting the block devices with all zeros
-is acceptable.
-
-6. An end user MUST have the option to require that user data be wiped prior to
-flashing a partition. For example, on Nexus devices, this is done via the
-"fastboot oem lock" command.
-
-7. A device MAY record, via efuses or similar mechanism, whether a device was
-unlocked and/or relocked.
-
-These requirements ensure that all data is destroyed upon the completion of an
-unlock operation. Failure to implement these protections is considered a
-?moderate? level security vulnerability.
-
-For additional questions or concerns, please feel free to contact
-security@android.com<security@android.com>.
-
-*/
-
-static bool is_loader_locked(void)
+static enum device_state get_device_state(void)
 {
 	int ret;
 	uint32_t attributes;
@@ -192,25 +221,61 @@ static bool is_loader_locked(void)
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 
 	if (!efi_variables_supported()) {
-		pr_debug("EFI variables not supported, assuming non-EFI system\n");
-		return false;
+		pr_debug("EFI variables not supported, assuming permanently unlocked non-EFI system\n");
+		return UNLOCKED;
 	}
 
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
-	if (ret) {
-		pr_debug("Couldn't read OEMLock, assuming device is locked\n");
-		return true;
+	if (ret || dsize != 1) {
+		pr_debug("Couldn't read OEMLock, assuming locked\n");
+		return LOCKED;
 	}
 
-	if (dsize < 2 || data[1]) {
-		pr_debug("Malformed OEMLock data, assuming device is locked\n");
-		return true;
+	if (data[0] & OEM_LOCK_UNLOCKED)
+		return UNLOCKED;
+
+	if (data[0] & OEM_LOCK_VERIFIED)
+		return VERIFIED;
+
+	return LOCKED;
+}
+
+
+static void fetch_boot_state(void)
+{
+	int ret;
+	uint32_t attributes;
+	char *data;
+	size_t dsize;
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+	char *state;
+
+	ret = efi_get_variable(fastboot_guid, BOOT_STATE_VAR, (uint8_t **)&data,
+			&dsize, &attributes);
+	if (ret || dsize != 1) {
+		pr_debug("Couldn't read boot state\n");
+		state = "unknown";
+	} else {
+		switch (data[0]) {
+		case BOOT_STATE_GREEN:
+			state = "GREEN";
+			break;
+		case BOOT_STATE_ORANGE:
+			state = "ORANGE";
+			break;
+		case BOOT_STATE_RED:
+			state = "RED";
+			break;
+		case BOOT_STATE_YELLOW:
+			state = "YELLOW";
+			break;
+		default:
+			state = "unknown";
+		}
 	}
 
-	if (!strcmp(data, "0"))
-		return false;
-	return true;
+	fastboot_publish("boot-state", xstrdup(state));
 }
 
 
@@ -221,6 +286,9 @@ static bool is_secure_boot_enabled(void)
 	char *data;
 	size_t dsize;
 	efi_guid_t global_guid = EFI_GLOBAL_VARIABLE;
+
+	if (!efi_variables_supported())
+		return false;
 
 	ret = efi_get_variable(global_guid, SECURE_BOOT_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
@@ -239,29 +307,15 @@ static bool is_secure_boot_enabled(void)
 }
 
 
-static bool confirm_oem_unlock(void)
+static bool confirm_device_state(char *headers[])
 {
 	int chosen_item = -1;
 	int selected = 1;
 	bool result = false;
 
-	char *headers[] = {
-		"**** Unlock bootloader? ****",
-		"",
-		"If you unlock the bootloader, you will be able to install custom operating",
-		"system software on this device. A custom OS is not subject to the same",
-		"testing as the original OS, and can cause your device and installed",
-		"applications to stop working properly. To prevent unauthorized access to your",
-		"personal data, unlocking the bootloader will also delete all personal data",
-		"from your device (a 'factory data reset').",
-		"",
-		"Press the Volume Up/Down to select Yes or No. Then press the Power button.",
-		"",
-		NULL };
-
 	char *items[] = {
-		"Yes: Unlock bootloader",
-		"No: Do not unlock bootloader",
+		"Yes: Change device state",
+		"No: Cancel",
 		NULL };
 
 	mui_clear_key_queue();
@@ -271,7 +325,7 @@ static bool confirm_oem_unlock(void)
 		return true;
 	}
 
-	fastboot_info("Please confirm the OEM unlock action using the UI.");
+	fastboot_info("Please confirm the device state action using the UI.");
 
 	while (chosen_item < 0) {
 		int key = mui_wait_key();
@@ -279,7 +333,7 @@ static bool confirm_oem_unlock(void)
 		pr_debug("got key event %d\n", key);
 		switch (key) {
 		case -1:
-			pr_info("OEM unlock prompt timed out\n");
+			pr_info("device state prompt timed out\n");
 			goto out;
 
 		case KEY_UP:
@@ -307,40 +361,80 @@ out:
 }
 
 
-static int set_loader_lock(bool state, bool skip_confirmation)
+static void update_device_state_metadata(void)
 {
-	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+	enum device_state dstate;
+
+	dstate = get_device_state();
+
+	fastboot_publish("device-state", xstrdup(state_to_string(dstate)));
+
+	switch (dstate) {
+	case LOCKED:
+		fastboot_publish("unlocked", xstrdup("no"));
+		break;
+	case UNLOCKED:
+	case VERIFIED:
+		fastboot_publish("unlocked", xstrdup("yes"));
+		break;
+	}
+}
+
+
+static int set_device_state(enum device_state device_state,
+		bool skip_confirmation)
+{
+	enum device_state current_state;
+	bool must_erase;
+	struct fstab_rec *vol;
+	uint8_t statevar;
+	char **headers = NULL;
 	int ret;
-	char *data;
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 
-	data = state ? "1" : "0";
+	current_state = get_device_state();
+	if (current_state == device_state) {
+		pr_info("Nothing to do.");
+		return 0;
+	}
 
-	if (state == false) {
-		/* Must securely erase user data before unlocking */
-		struct fstab_rec *vol = volume_for_name("data");
-		if (vol == NULL) {
-			pr_error("invalid fstab\n");
+	switch (device_state) {
+	case LOCKED:
+		statevar = 0;
+		headers = lock_headers;
+		break;
+	case UNLOCKED:
+		statevar = OEM_LOCK_UNLOCKED;
+		headers = unlock_headers;
+		break;
+	case VERIFIED:
+		statevar = OEM_LOCK_VERIFIED;
+		headers = verified_headers;
+		break;
+	}
+
+	vol = volume_for_name("data");
+	if (!vol) {
+		pr_error("invalid fstab\n");
+		return -1;
+	}
+	must_erase = is_valid_blkdev(vol->blk_device);
+
+	if (must_erase) {
+		if (!skip_confirmation && !confirm_device_state(headers))
 			return -1;
-		}
-		/* Check to make sure the data partition device node
-		 * actually exists. If it doesn't the disk is unpartitioned
-		 * and we can proceed */
-		if (is_valid_blkdev(vol->blk_device)) {
-			if (!skip_confirmation && !confirm_oem_unlock())
-				return -1;
 
-			pr_status("Userdata erase required, this can take a while...\n");
-			fastboot_info("Userdata erase required, this can take a while...\n");
+		pr_status("Userdata erase required, this can take a while...\n");
+		fastboot_info("Userdata erase required, this can take a while...\n");
 
-			if (erase_partition(vol)) {
-				pr_error("couldn't erase data partition\n");
-				return -1;
-			}
+		if (erase_partition(vol)) {
+			pr_error("couldn't erase data partition\n");
+			return -1;
 		}
 	}
 
 	ret = efi_set_variable(fastboot_guid, OEM_LOCK_VAR,
-			(uint8_t *)data, 2,
+			&statevar, sizeof(statevar),
 			EFI_VARIABLE_NON_VOLATILE |
 			EFI_VARIABLE_RUNTIME_ACCESS |
 			EFI_VARIABLE_BOOTSERVICE_ACCESS);
@@ -349,24 +443,32 @@ static int set_loader_lock(bool state, bool skip_confirmation)
 		return -1;
 	}
 
-	if (state == false) {
-		if (!is_loader_locked()) {
-			pr_info("Fastboot now unlocked\n");
-			fastboot_publish("unlocked", xstrdup("yes"));
-		} else {
-			pr_error("Inconsistent OEMLock state!!\n");
-			return -1;
-		}
-	} else {
-		if (is_loader_locked()) {
-			pr_info("Fastboot now locked\n");
-			fastboot_publish("unlocked", xstrdup("no"));
-		} else {
-			pr_error("Inconsistent OEMLock state!!\n");
-			return -1;
-		}
+	current_state = get_device_state();
+	if (current_state != device_state) {
+		pr_error("Failed to set device state\n");
+		return -1;
 	}
+
+	update_device_state_metadata();
 	populate_status_info();
+	return 0;
+}
+
+
+static int set_keystore_data(void *data, size_t size)
+{
+	int ret;
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+
+	ret = efi_set_variable(fastboot_guid, KEYSTORE_VAR,
+			data, size,
+			EFI_VARIABLE_NON_VOLATILE |
+			EFI_VARIABLE_RUNTIME_ACCESS |
+			EFI_VARIABLE_BOOTSERVICE_ACCESS);
+	if (ret) {
+		pr_error("Coudn't modify KeyStore\n");
+		return -1;
+	}
 	return 0;
 }
 
@@ -425,9 +527,11 @@ static void process_target(char *targetspec, struct flash_target *tgt)
 	}
 }
 
-static int aboot_register_cmd(Hashmap *map, char *key, void *callback)
+static int aboot_register_cmd(Hashmap *map, char *key, void *callback,
+		enum device_state min_state)
 {
 	char *k;
+	struct cmd_struct *cs;
 
 	k = xstrdup(key);
 	if (hashmapGet(map, k)) {
@@ -435,30 +539,52 @@ static int aboot_register_cmd(Hashmap *map, char *key, void *callback)
 		free(k);
 		return -1;
 	}
-	hashmapPut(map, k, callback);
+	cs = xmalloc(sizeof(*cs));
+	cs->callback = callback;
+	cs->min_state = min_state;
+
+	hashmapPut(map, k, cs);
 	pr_verbose("Registered plugin function %p (%s) with table %p\n",
 			callback, k, map);
 	return 0;
 }
 
-int aboot_register_flash_cmd(char *key, flash_func callback)
+int aboot_register_flash_cmd(char *key, flash_func callback, enum device_state min_state)
 {
-	return aboot_register_cmd(flash_cmds, key, callback);
+	int ret;
+	ret = aboot_register_cmd(flash_cmds, key, callback, min_state);
+	return ret;
 }
 
-int aboot_register_oem_cmd(char *key, oem_func callback)
+int aboot_register_oem_cmd(char *key, oem_func callback, enum device_state min_state)
 {
-	return aboot_register_cmd(oem_cmds, key, callback);
+	return aboot_register_cmd(oem_cmds, key, callback, min_state);
 }
 
 /* Erase a named partition by creating a new empty partition on top of
  * its device node. No parameters. */
-static void cmd_erase(char *part_name, int *fd, unsigned sz)
+static void cmd_erase(char *part_name, int fd, void *data, unsigned sz)
 {
 	struct fstab_rec *vol;
+	enum device_state current_state;
 
-	if (is_loader_locked()) {
-		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
+	current_state = get_device_state();
+	if (current_state == LOCKED) {
+		fastboot_fail("bootloader must not be locked");
+		return;
+	}
+
+	if (current_state == VERIFIED &&
+			!hashmapContainsKey(erase_whitelist, part_name)) {
+		fastboot_fail("can't erase this in 'verified' state");
+		return;
+	}
+
+	if (!strcmp(part_name, "keystore")) {
+		if (set_keystore_data(NULL, 0))
+			fastboot_fail("couldn't erase keystore");
+		else
+			fastboot_okay("");
 		return;
 	}
 
@@ -492,59 +618,69 @@ static void cmd_erase(char *part_name, int *fd, unsigned sz)
  * a simple string (for flags) or param=value.
  *
  */
-static void cmd_flash(char *targetspec, int *fd, unsigned sz)
+static void cmd_flash(char *targetspec, int fd, void *data, unsigned sz)
 {
 	struct flash_target tgt;
 	flash_func cb;
+	struct cmd_struct *cs;
 	int ret;
         struct fstab_rec *vol;
 	uint64_t vsize;
-
-	void *data = NULL;
 	uint32_t magic = 0;
-
-	if (is_loader_locked()) {
-		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
-		return;
-	}
+	enum device_state current_state;
 
 	process_target(targetspec, &tgt);
-	pr_verbose("data size %u\n", sz);
 
+	current_state = get_device_state();
+
+	pr_verbose("data size %u\n", sz);
 	pr_status("Flashing %s\n", targetspec);
 
-	if ( (cb = hashmapGet(flash_cmds, tgt.name)) ) {
+	if ( (cs = hashmapGet(flash_cmds, tgt.name)) ) {
+		int cbret;
+
 		/* Use our table of flash functions registered by platform
 		 * specific plugin libraries */
-		int cbret;
-		cbret = cb(tgt.params, fd, sz);
+		if (current_state < cs->min_state) {
+			fastboot_fail("command not allowed in this device state");
+			goto out;
+		}
+
+		cb = (flash_func)cs->callback;
+
+		cbret = cb(tgt.params, fd, data, sz);
 		if (cbret) {
 			pr_error("%s flash failed!\n", tgt.name);
 			fastboot_fail("%s", tgt.name);
 		} else
 			fastboot_okay("");
 		goto out;
-	} else {
-		vol = volume_for_name(tgt.name);
-		if (!vol) {
-			fastboot_fail("%s", tgt.name);
-			goto out;
-		}
 	}
 
-	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
-	if (data == (void*)-1){
-		pr_error("Failed to mmap the file\n");
-		goto out_map;
+	if (current_state == LOCKED) {
+		fastboot_fail("Bootloader must not be locked");
+		goto out;
+	}
+
+	if (current_state == VERIFIED &&
+			!hashmapContainsKey(flash_whitelist, tgt.name)) {
+		fastboot_fail("can't flash this partition in VERIFIED state");
+		goto out;
+	}
+
+	vol = volume_for_name(tgt.name);
+	if (!vol) {
+		fastboot_fail("%s", tgt.name);
+		goto out;
 	}
 
 	if (!is_valid_blkdev(vol->blk_device)) {
 		fastboot_fail("invalid destination node. partition disks?");
-		goto out_map;
+		goto out;
 	}
 	if (get_volume_size(vol, &vsize)) {
 		fastboot_fail("couldn't get volume size");
-		goto out_map;
+		goto out;
 	}
 
 	if (!strcmp(targetspec, "fastboot") ||
@@ -552,14 +688,14 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	    !strcmp(targetspec, "boot")) {
 		if (bootimage_sanity_checks(data, sz)) {
 			fastboot_fail("malformed AOSP boot image, refusing to flash!");
-			goto out_map;
+			goto out;
 		}
 	}
 
 	if (!strcmp(targetspec, "bootloader")) {
 		if (esp_sanity_checks(FASTBOOT_DOWNLOAD_TMP_FILE)) {
 			fastboot_fail("malformed bootloader image");
-			goto out_map;
+			goto out;
 		}
 	}
 
@@ -580,7 +716,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 			pr_error("need %" PRIu64 " bytes, have %" PRIu64 " available\n",
 					totalsize, vsize);
 			fastboot_fail("target partition too small!");
-			goto out_map;
+			goto out;
 		}
 		ret = named_file_write_ext4_sparse(vol->blk_device, FASTBOOT_DOWNLOAD_TMP_FILE);
 	} else {
@@ -588,7 +724,7 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 			pr_error("need %d, %" PRIu64 " available\n",
 					sz, vsize);
 			fastboot_fail("target partition too small!");
-			goto out_map;
+			goto out;
 		}
 		pr_debug("Writing %u MiB to %s\n", sz >> 20, vol->blk_device);
 		ret = named_file_write(vol->blk_device, data, sz, 0, 0);
@@ -596,32 +732,68 @@ static void cmd_flash(char *targetspec, int *fd, unsigned sz)
 	pr_verbose("Done writing image\n");
 	if (ret) {
 		fastboot_fail("Can't write data to target device");
-		goto out_map;
+		goto out;
 	}
 	sync();
 
 	pr_debug("wrote %u bytes to %s\n", sz, vol->blk_device);
 
 	fastboot_okay("");
-out_map:
-	ret = munmap(data, sz);
-	if (ret)
-		pr_error("Failed to munmap the file\n");
 out:
 	hashmapFree(tgt.params);
-	if (*fd >= 0){
-		close(*fd);
-		unlink(FASTBOOT_DOWNLOAD_TMP_FILE);
-	}
 }
 
-static void cmd_oem(char *arg, int *fd, unsigned sz)
+static int parse_state_cmd(char *cmd, enum device_state *state, bool *confirm)
+{
+	if (!strcmp(cmd, CMD_UNLOCK)) {
+		*confirm = true;
+		*state = UNLOCKED;
+		return 0;
+	}
+
+	if (!strcmp(cmd, CMD_LOCK)) {
+		*confirm = true;
+		*state = LOCKED;
+		return 0;
+	}
+
+	if (!strcmp(cmd, CMD_VERIFIED)) {
+		*confirm = true;
+		*state = VERIFIED;
+		return 0;
+	}
+
+	if (!strcmp(cmd, CMD_UNLOCK_NC)) {
+		*confirm = false;
+		*state = UNLOCKED;
+		return 0;
+	}
+
+	if (!strcmp(cmd, CMD_LOCK_NC)) {
+		*confirm = false;
+		*state = LOCKED;
+		return 0;
+	}
+
+	if (!strcmp(cmd, CMD_VERIFIED_NC)) {
+		*confirm = false;
+		*state = VERIFIED;
+		return 0;
+	}
+
+	return -1;
+}
+
+
+static void cmd_oem(char *arg, int fd, void *data, unsigned sz)
 {
 	char *command, *saveptr, *str1;
 	char *argv[MAX_OEM_ARGS];
 	int argc = 0;
-	oem_func cb;
-	bool locked;
+	enum device_state device_state, new_state;
+	bool confirm;
+	struct cmd_struct *cs;
+	int ret;
 
 	pr_verbose("%s: <%s>\n", __FUNCTION__, arg);
 
@@ -640,49 +812,34 @@ static void cmd_oem(char *arg, int *fd, unsigned sz)
 		goto out;
 	}
 
-	locked = is_loader_locked();
-
-	if (!strcmp(argv[0], CMD_UNLOCK) || !strcmp(argv[0], CMD_UNLOCK_NOCONFIRM)) {
-		if (locked) {
-			if (set_loader_lock(false,
-					!strcmp(argv[0], CMD_UNLOCK_NOCONFIRM))) {
-				fastboot_fail("oem unlock");
-			} else {
-				fastboot_okay("");
-			}
-		} else {
-			fastboot_okay("already unlocked");
-		}
-		goto out;
-	}
-
-	if (locked) {
-		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
-		goto out;
-	}
-
-	if ( (cb = hashmapGet(oem_cmds, argv[0])) ) {
-		int ret;
-
-		ret = cb(argc, argv);
-		if (ret) {
-			pr_error("oem %s command failed, retval = %d\n",
-					argv[0], ret);
-			fastboot_fail("%s", argv[0]);
-		} else
+	/* Check if user sent one of various state transition commands */
+	if (!parse_state_cmd(argv[0], &new_state, &confirm)) {
+		if (set_device_state(new_state, !confirm))
+			fastboot_fail("couldn't change state");
+		else
 			fastboot_okay("");
-	} else if (strcmp(argv[0], CMD_SHOWTEXT) == 0) {
-		mui_show_text(1);
-		fastboot_okay("");
-	} else if (strcmp(argv[0], CMD_HIDETEXT) == 0) {
-		mui_show_text(0);
-		mui_set_background(BACKGROUND_ICON_INSTALLING);
-		fastboot_okay("");
-	} else if (strcmp(argv[0], CMD_LOCK) == 0) {
-		set_loader_lock(true, false);
-		fastboot_okay("");
-	} else {
+		goto out;
+	}
+
+	cs = hashmapGet(oem_cmds, argv[0]);
+	if (!cs) {
 		fastboot_fail("unknown OEM command");
+		goto out;
+	}
+
+	device_state = get_device_state();
+	if (device_state < cs->min_state) {
+		fastboot_fail("command not allowed in this device state");
+		goto out;
+	}
+
+	ret = ((oem_func)cs->callback)(argc, argv);
+	if (ret) {
+		pr_error("oem %s command failed, retval = %d\n",
+				argv[0], ret);
+		fastboot_fail("%s", argv[0]);
+	} else {
+		fastboot_okay("");
 	}
 out:
 	if (command)
@@ -690,17 +847,17 @@ out:
 	return;
 }
 
-static void cmd_boot(char *arg, int *fd, unsigned sz)
+
+static void cmd_boot(char *arg, int fd, void *data, unsigned sz)
 {
 	/* Copy the boot image to the ESP (bootloader partition)
 	 * and set the BCB so that the loader knows to use it */
 	struct fstab_rec *vol_bootloader, *vol_misc;
 	struct bootloader_message bcb;
 	int success = 0;
-	void *data;
 
-	if (is_loader_locked()) {
-		fastboot_fail("LOCKED, unlock with 'fastboot oem unlock'");
+	if (get_device_state() == LOCKED) {
+		fastboot_fail("bootloader must not be locked");
 		return;
 	}
 
@@ -724,27 +881,19 @@ static void cmd_boot(char *arg, int *fd, unsigned sz)
 		return;
 	}
 
-	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
-	if (data == (void*)-1){
-		pr_error("Failed to mmap the file\n");
-		goto out;
-	}
-
 	if (named_file_write("/mnt/bootloader/bootonce.img",
 				data, sz, 0, 0)) {
 		pr_error("Couldn't write boot image to bootloader partition.\n");
-		goto out_unmap;
+		goto out;
 	}
 
 	memset(&bcb, 0, sizeof(bcb));
 	snprintf(bcb.command, sizeof(bcb.command), "bootonce-\\bootonce.img");
 	if (named_file_write(vol_misc->blk_device, (void *)&bcb, sizeof(bcb), 0, 0)) {
 		pr_error("Couldn't update BCB!\n");
-		goto out_unmap;
+		goto out;
 	}
 	success = 1;
-out_unmap:
-	munmap(data, sz);
 out:
 	unmount_partition(vol_bootloader);
 	if (success) {
@@ -757,10 +906,9 @@ out:
 }
 
 
-static int cmd_flash_sfu(Hashmap *params, int *fd, unsigned sz)
+static int cmd_flash_sfu(Hashmap *params, int fd, void *data, unsigned sz)
 {
 	struct fstab_rec *vol_bootloader;
-	void *data;
 	int ret = -1;
 
 	vol_bootloader = volume_for_name("bootloader");
@@ -774,28 +922,30 @@ static int cmd_flash_sfu(Hashmap *params, int *fd, unsigned sz)
 		fastboot_fail("couldn't mount bootloader partition");
 		return -1;
 	}
-	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
-	if (data == (void*)-1){
-		pr_error("Failed to mmap the file\n");
-		goto out;
-	}
 
 	if (named_file_write("/mnt/bootloader/BIOSUPDATE.fv",
 				data, sz, 0, 0)) {
 		pr_error("Couldn't write SFU capsule image to bootloader partition.\n");
-		goto out_unmap;
+		goto out;
 	}
 	fastboot_info("SFU capsule will be applied on next reboot");
 	ret = 0;
-out_unmap:
-	munmap(data, sz);
 out:
 	unmount_partition(vol_bootloader);
 	return ret;
 }
 
 
-static void cmd_reboot(char *arg, int *fd, unsigned sz)
+static int cmd_flash_keystore(Hashmap *params, int fd, void *data,
+		unsigned sz)
+{
+	/* TODO validate the keystore data is well-formed before flashing */
+
+	return set_keystore_data(data, sz);
+}
+
+
+static void cmd_reboot(char *arg, int fd, void *data, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
@@ -805,7 +955,8 @@ static void cmd_reboot(char *arg, int *fd, unsigned sz)
 	pr_error("Reboot failed\n");
 }
 
-static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
+
+static void cmd_reboot_bl(char *arg, int fd, void *data, unsigned sz)
 {
 	fastboot_okay("");
 	sync();
@@ -815,10 +966,12 @@ static void cmd_reboot_bl(char *arg, int *fd, unsigned sz)
 	pr_error("Reboot failed\n");
 }
 
+
 static int start_adbd(int argc, char **argv)
 {
 	return system("adbd &");
 }
+
 
 #define CHUNK	1024LL * 1024LL
 static int garbage_disk(int argc, char **argv)
@@ -936,6 +1089,22 @@ static int set_efi_var(int argc, char **argv)
 	return ret;
 }
 
+
+static int oem_hidetext(int argc, char **argv)
+{
+	mui_set_background(BACKGROUND_ICON_INSTALLING);
+	mui_show_text(0);
+	return 0;
+}
+
+
+static int oem_showtext(int argc, char **argv)
+{
+	mui_show_text(1);
+	return 0;
+}
+
+
 static void publish_from_prop(char *key, char *prop, char *dfl)
 {
 	char val[PROPERTY_VALUE_MAX];
@@ -957,22 +1126,38 @@ void populate_status_info(void)
 		     "        firmware: %s\n"
 		     "           board: %s\n"
 		     "        serialno: %s\n"
-		     "        unlocked: %s\n"
-		     "   secure images: %s\n"
-		     "     secure boot: %s\n"
+		     "    device state: %s\n"
+		     "UEFI secure boot: %s\n"
+		     "      boot state: %s\n"
 		     " \n%s", USERFASTBOOT_VERSION,
 		     fastboot_getvar("product"),
 		     fastboot_getvar("kernel"),
 		     fastboot_getvar("firmware"),
 		     fastboot_getvar("board"),
 		     fastboot_getvar("serialno"),
-		     fastboot_getvar("unlocked"),
-		     fastboot_getvar("secure"),
+		     fastboot_getvar("device-state"),
 		     fastboot_getvar("secureboot"),
+		     fastboot_getvar("boot-state"),
 		     interface_info);
 	pr_debug("%s", infostring);
 	mui_infotext(infostring);
 	free(infostring);
+}
+
+
+static Hashmap *init_hashmap_list(char ** init_list)
+{
+	char ** pos;
+	Hashmap *m;
+
+	m = hashmapCreate(8, strhash, strcompare);
+	if (!m)
+		return NULL;
+
+	for (pos = init_list; *pos; pos++)
+		hashmapPut(m, *pos, NULL);
+
+	return m;
 }
 
 
@@ -995,13 +1180,16 @@ void aboot_register_commands(void)
 
 	flash_cmds = hashmapCreate(8, strhash, strcompare);
 	oem_cmds = hashmapCreate(8, strhash, strcompare);
-	if (!flash_cmds || !oem_cmds) {
+	flash_whitelist = init_hashmap_list(default_flash_whitelist);
+	erase_whitelist = init_hashmap_list(default_erase_whitelist);
+	if (!flash_cmds || !oem_cmds || !flash_whitelist || !erase_whitelist) {
 		pr_error("Memory allocation error\n");
 		die();
 	}
 	publish_all_part_data(false);
 
-	/* Currently we don't require signatures on images */
+	/* Currently we don't require signatures on images
+	 * XXX need to reconcile this with Verifiedbootflow.pdf */
 	fastboot_publish("secure", xstrdup("no"));
 
 	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled() ? "yes" : "no"));
@@ -1040,15 +1228,22 @@ void aboot_register_commands(void)
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
-	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
-	aboot_register_flash_cmd("mbr", cmd_flash_mbr);
-	aboot_register_flash_cmd("sfu", cmd_flash_sfu);
-	aboot_register_oem_cmd("adbd", start_adbd);
-	aboot_register_oem_cmd("garbage-disk", garbage_disk);
-	aboot_register_oem_cmd("setvar", set_efi_var);
+
+	aboot_register_flash_cmd("gpt", cmd_flash_gpt, UNLOCKED);
+	aboot_register_flash_cmd("mbr", cmd_flash_mbr, UNLOCKED);
+	aboot_register_flash_cmd("sfu", cmd_flash_sfu, VERIFIED);
+	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
+
+	aboot_register_oem_cmd("adbd", start_adbd, UNLOCKED);
+	aboot_register_oem_cmd("garbage-disk", garbage_disk, UNLOCKED);
+	aboot_register_oem_cmd("setvar", set_efi_var, UNLOCKED);
+	aboot_register_oem_cmd("showtext", oem_showtext, LOCKED);
+	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
+
 	register_userfastboot_plugins();
 
-	fastboot_publish("unlocked", xstrdup(is_loader_locked() ? "no" : "yes"));
+	fetch_boot_state();
+	update_device_state_metadata();
 }
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround

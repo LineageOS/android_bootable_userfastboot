@@ -35,11 +35,10 @@
 
 #define MBR_CODE_SIZE	440
 
-int cmd_flash_mbr(Hashmap *params, int *fd, unsigned sz)
+int cmd_flash_mbr(Hashmap *params, int fd, void *data, unsigned sz)
 {
 	int ret = -1;
 	char *device, *target;
-	void *data = NULL;
 
 	target = hashmapGet(params, "target");
 	if (target) {
@@ -49,13 +48,7 @@ int cmd_flash_mbr(Hashmap *params, int *fd, unsigned sz)
 	}
 
 	if (sz > MBR_CODE_SIZE) {
-		pr_error("MBR file cannot be larger than 440 bytes!\n");
-		goto out;
-	}
-
-	data = mmap64(NULL, sz, PROT_READ, MAP_SHARED, *fd, 0);
-	if (data == (void*)-1){
-		pr_error("Failed to mmap the file\n");
+		pr_error("MBR file cannot be larger than %d bytes!\n", MBR_CODE_SIZE);
 		goto out;
 	}
 

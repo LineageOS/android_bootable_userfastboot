@@ -42,6 +42,7 @@
 #include <errno.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/functionfs.h>
+#include <inttypes.h>
 
 #include <cutils/hashmap.h>
 
@@ -173,14 +174,14 @@ struct fastboot_cmd {
 	struct fastboot_cmd *next;
 	const char *prefix;
 	unsigned prefix_len;
-	void (*handle) (char *arg, int *fd, unsigned sz);
+	void (*handle) (char *arg, int fd, void *data, unsigned sz);
 };
 
 static struct fastboot_cmd *cmdlist;
 
 void fastboot_register(const char *prefix,
-		       void (*handle) (char *arg, int *fd,
-				       unsigned sz))
+		       void (*handle) (char *arg, int fd,
+				       void *data, unsigned sz))
 {
 	struct fastboot_cmd *cmd;
 	cmd = xmalloc(sizeof(*cmd));
@@ -251,7 +252,7 @@ static int usb_read(void *_buf, unsigned len)
 
 		r = read(io.read_fp, buf, xfer);
 		if (r < 0) {
-			pr_warning("read");
+			pr_perror("read");
 			goto oops;
 		} else if (r == 0) {
 			pr_debug("Connection closed\n");
@@ -325,7 +326,7 @@ static int usb_read_to_file(int fd, unsigned int len)
 		}
 		r = write(fd, buf, size);
 		if ((r < 0) || ((unsigned int)r != size)) {
-			pr_error("fastboot: usb_read_to_file error only wrote %d bytes to file. Needed:%d\n", r, size);
+			pr_perror("write");
 			count = -1;
 			goto out;
 		}
@@ -413,7 +414,7 @@ static bool getvar_all_cb(void *key, void *value, void *context)
 	return true;
 }
 
-static void cmd_getvar(char *arg, int *fd, unsigned sz)
+static void cmd_getvar(char *arg, int fd, void *data, unsigned sz)
 {
 	const char *value;
 
@@ -449,7 +450,7 @@ static void cmd_getvar(char *arg, int *fd, unsigned sz)
 	}
 }
 
-static void cmd_download(char *arg, int *fd, unsigned sz)
+static void cmd_download(char *arg, int fd, void *data, unsigned sz)
 {
 	char response[MAGIC_LENGTH];
 	unsigned len;
@@ -470,7 +471,7 @@ static void cmd_download(char *arg, int *fd, unsigned sz)
 	if (usb_write(response, strlen(response)) < 0)
 		return;
 
-	r = usb_read_to_file(*fd, len);
+	r = usb_read_to_file(fd, len);
 
 	if ((r < 0) || ((unsigned int)r != len)) {
 		pr_error("fastboot: cmd_download error only got %d bytes\n", r);
@@ -486,6 +487,8 @@ static void fastboot_command_loop(void)
 	struct fastboot_cmd *cmd;
 	int r;
 	int fd = -1;
+	void *data;
+
 	pr_debug("fastboot: processing commands\n");
 
 again:
@@ -503,19 +506,62 @@ again:
 			fastboot_state = STATE_COMMAND;
 
 			fd = open(FASTBOOT_DOWNLOAD_TMP_FILE, O_RDWR | O_CREAT, 0600);
-			if (fd < 0){
-				pr_error("fastboot: command_loop cannot open the temp file: %s\n",
-						strerror(errno));
-				fastboot_fail("fastboot failed");
+			if (fd < 0) {
+				pr_error("fastboot: cannot open temp file: %s\n",
+					strerror(errno));
+				die();
+			}
+
+			if (download_size) {
+				struct stat sb;
+				if (fstat(fd, &sb)) {
+					pr_perror("fstat");
+					die();
+				}
+
+				if (sb.st_size != download_size) {
+					pr_error("size mismatch! (expected %u vs %" PRIu64 ")\n",
+							download_size, sb.st_size);
+					die();
+				}
+
+				data = mmap64(NULL, download_size, PROT_READ, MAP_SHARED, fd, 0);
+				if (data == (void*)-1) {
+					pr_perror("mmap64");
+					die();
+				}
+				pr_verbose("%u bytes mapped\n", download_size);
+			} else {
+				pr_verbose("nothing to mmap\n");
+				data = NULL;
 			}
 
 			pthread_mutex_lock(&action_mutex);
+			pr_verbose("enter command handler\n");
 			cmd->handle((char *)buffer + cmd->prefix_len,
-				    &fd, download_size);
+				    fd, data, download_size);
+			pr_verbose("exit command handler\n");
 			pthread_mutex_unlock(&action_mutex);
 
-			if (fd >= 0)
-				close(fd);
+			if (data && munmap(data, download_size)) {
+				pr_perror("munmap");
+				die();
+			}
+
+			if (close(fd)) {
+				pr_perror("close");
+				die();
+			}
+
+			if (data) {
+				download_size = 0;
+				pr_verbose("deleting temp file\n");
+
+				if (unlink(FASTBOOT_DOWNLOAD_TMP_FILE)) {
+					pr_perror("unlink");
+					die();
+				}
+			}
 
 			if (fastboot_state == STATE_COMMAND)
 				fastboot_fail("unknown reason");

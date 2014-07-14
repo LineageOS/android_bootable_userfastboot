@@ -42,7 +42,7 @@ int fastboot_handler(void);
  *   to indicate success/failure before returning
  */
 void fastboot_register(const char *prefix,
-                       void (*handle)(char *arg, int *fd, unsigned size));
+                       void (*handle)(char *arg, int fd, void *data, unsigned size));
 
 /* Fetch the value of a fastboot_publish variable */
 char *fastboot_getvar(char *name);

@@ -1090,6 +1090,22 @@ static int set_efi_var(int argc, char **argv)
 }
 
 
+static int oem_reboot_cmd(int argc, char **argv)
+{
+	if (argc != 2) {
+		pr_error("incorrect number of parameters");
+		return -1;
+	}
+
+	pr_info("Rebooting into %s...\n", argv[1]);
+	fastboot_okay("");
+	close_iofds();
+	android_reboot(ANDROID_RB_RESTART2, 0, argv[1]);
+	/* Shouldn't get here */
+	return -1;
+}
+
+
 static int oem_hidetext(int argc, char **argv)
 {
 	mui_set_background(BACKGROUND_ICON_INSTALLING);
@@ -1237,6 +1253,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("adbd", start_adbd, UNLOCKED);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk, UNLOCKED);
 	aboot_register_oem_cmd("setvar", set_efi_var, UNLOCKED);
+	aboot_register_oem_cmd("reboot", oem_reboot_cmd, LOCKED);
 	aboot_register_oem_cmd("showtext", oem_showtext, LOCKED);
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
 

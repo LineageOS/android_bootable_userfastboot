@@ -28,6 +28,7 @@
 #include <cutils/hashmap.h>
 #include <iniparser.h>
 #include <gpt/gpt.h>
+#include <efivar.h>
 
 #include "gpt.h"
 #include "userfastboot_util.h"
@@ -376,16 +377,21 @@ int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
 		pr_warning("Couldn't re-read GPT, please reboot!\n");
 	publish_all_part_data(true);
 
-	if (ctx.esp_index) {
-		ret = execute_command("/sbin/efibootmgr -c -d %s -l %s -v -p %d -D %s -L %s",
-				ctx.gpt->device, ctx.esp_loader, ctx.esp_index,
-				ctx.esp_title, ctx.esp_title);
-		if (ret) {
-			pr_warning("EFIBOOTMGR failed with exit status %d\n", ret);
-			goto out_free_gpt;
+	if (efi_variables_supported()) {
+		if (ctx.esp_index) {
+			ret = execute_command("/sbin/efibootmgr -c -d %s -l %s -v -p %d -D %s -L %s",
+					ctx.gpt->device, ctx.esp_loader, ctx.esp_index,
+					ctx.esp_title, ctx.esp_title);
+			if (ret) {
+				pr_warning("EFIBOOTMGR failed with exit status %d\n", ret);
+				goto out_free_gpt;
+			}
+		} else {
+			pr_warning("Disk has no EFI system partition\n");
 		}
-	} else
-		pr_warning("Disk has no EFI system partition\n");
+	} else {
+		pr_debug("Skip calling efiboormgr on non-EFI system\n");
+	}
 	ret = 0;
 
 out_free_gpt:

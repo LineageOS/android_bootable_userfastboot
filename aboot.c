@@ -65,6 +65,7 @@
 #include "userfastboot_plugin.h"
 #include "userfastboot_ui.h"
 #include "gpt.h"
+#include "mbr.h"
 #include "network.h"
 #include "sanity.h"
 
@@ -189,6 +190,11 @@ static bool is_loader_locked(void)
 	char *data;
 	size_t dsize;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+
+	if (!efi_variables_supported()) {
+		pr_debug("EFI variables not supported, assuming non-EFI system\n");
+		return false;
+	}
 
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
@@ -1032,6 +1038,7 @@ void aboot_register_commands(void)
 	fastboot_register("erase:", cmd_erase);
 	fastboot_register("flash:", cmd_flash);
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt);
+	aboot_register_flash_cmd("mbr", cmd_flash_mbr);
 	aboot_register_flash_cmd("sfu", cmd_flash_sfu);
 	aboot_register_oem_cmd("adbd", start_adbd);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk);

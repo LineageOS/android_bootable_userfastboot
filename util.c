@@ -558,43 +558,6 @@ static int erase_range_zero(int fd, uint64_t start, uint64_t len)
 	return 0;
 }
 
-static int erase_range(int fd, uint64_t start, uint64_t len)
-{
-	uint64_t range[2];
-	int ret;
-	static enum erase_type etype = SECDISCARD;
-
-	pr_debug("erasing offset %" PRIu64 " len %" PRIu64 "\n", start, len);
-	switch (etype) {
-	case SECDISCARD:
-		range[0] = start;
-		range[1] = len;
-
-		ret = ioctl(fd, BLKSECDISCARD, &range);
-		if (ret >= 0)
-			break;
-		pr_info("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
-				strerror(errno));
-		etype = DISCARD;
-		/* fall through */
-	case DISCARD:
-		range[0] = start;
-		range[1] = len;
-
-		ret = ioctl(fd, BLKDISCARD, &range);
-		if (ret >= 0)
-			break;
-		pr_info("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
-				strerror(errno));
-		pr_info("This can take a LONG time!\n");
-		etype = ZERO;
-		/* Fall through */
-	case ZERO:
-		return erase_range_zero(fd, start, len);
-	}
-
-	return 0;
-}
 
 static char *get_disk_sysfs(char *node)
 {
@@ -667,7 +630,7 @@ int erase_partition(struct fstab_rec *vol)
 		mui_set_progress((float)pos / (float)disk_size);
 		if (pos + increment > disk_size)
 			increment = disk_size - pos;
-		if (erase_range(fd, pos, increment)) {
+		if (erase_range_zero(fd, pos, increment)) {
 			pr_error("Disk erase operation failed\n");
 			goto out;
 		}

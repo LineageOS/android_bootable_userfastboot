@@ -35,6 +35,8 @@
 #include <unistd.h>
 #include <sys/mount.h>
 
+#include <efivar.h>
+
 #include "userfastboot_ui.h"
 #include "userfastboot_util.h"
 
@@ -82,11 +84,18 @@ int esp_sanity_checks(const char *path)
 		return -1;
 	}
 
-	/* At least one of these should be present */
-	if (stat("/mnt/EFI/BOOT/bootia32.efi", &sb) &&
-	    stat("/mnt/EFI/BOOT/bootx64.efi", &sb)) {
-		pr_error("Missing BOOT/EFI loaders!\n");
-		goto out;
+	if (efi_variables_supported()) {
+		/* At least one of these should be present */
+		if (stat("/mnt/EFI/BOOT/bootia32.efi", &sb) &&
+		    stat("/mnt/EFI/BOOT/bootx64.efi", &sb)) {
+			pr_error("Missing BOOT/EFI loaders!\n");
+			goto out;
+		}
+	} else {
+		if (stat("/mnt/isolinux.bin", &sb)) {
+			pr_error("Missing BOOT/ISOLINUX loader!\n");
+			goto out;
+		}
 	}
 
 	pr_debug("bootloader image seems OK\n");

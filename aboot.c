@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -944,6 +945,110 @@ out:
 	return ret;
 }
 
+static bool parse_oemvar_guid_line(char *line, efi_guid_t *g)
+{
+	unsigned int a, b, c, d, e[6];
+	if (sscanf(line, " GUID = %8x-%4x-%4x-%4x-%2x%2x%2x%2x%2x%2x ",
+		  &a, &b, &c, &d, &e[0], &e[1], &e[2], &e[3], &e[4], &e[5])
+	    == 10)
+	{
+		g->a = a; g->b = b;
+		g->c = c; g->d = (d >> 8) | (d << 8);
+		g->e[0] = e[0]; g->e[1] = e[1];
+		g->e[2] = e[2]; g->e[3] = e[3];
+		g->e[4] = e[4]; g->e[5] = e[5];
+		return true;
+	}
+	return false;
+}
+
+/* Implements modify-in-place "URL-like" escaping: "%[0-9a-fA-F]{2}"
+ * converts to the specified byte; no other modifications are
+ * performed (including "+" for space!).  Returns the number of output
+ * bytes */
+static size_t unescape_oemvar_val(char *val)
+{
+	char *p = val, *out = val;
+	unsigned int byte;
+	while (*p) {
+		if (p[0] != '%') {
+			*out++ = *p++;
+			continue;
+		}
+
+		if (sscanf(p, "%%%2x", &byte) == 1) {
+			*out++ = byte;
+			p += 3;
+		} else {
+			*out++ = *p++;
+		}
+	}
+	return out - val;
+}
+
+static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
+{
+	int ret = -1;
+	char *buf, *line, *eol, *var, *val, *p;
+	size_t vallen;
+	efi_guid_t curr_guid = FASTBOOT_GUID;
+
+	pr_info("Parsing and setting values from oemvars file\n");
+
+	/* extra byte so we can always terminate the last line */
+	buf = malloc(sz+1);
+	if (!buf)
+		return ret;
+	if (robust_read(fd, buf, sz, false) != (ssize_t)sz) {
+		free(buf);
+		return ret;
+	}
+	buf[sz] = 0;
+
+	for (line = buf; line - buf < (ssize_t)sz; line = eol+1) {
+		/* Detect line and terminate */
+		eol = strchr(line, '\n');
+		if (!eol)
+			eol = line + strlen(line);
+		*eol = 0;
+
+		/* Snip comments */
+		if ((p = strchr(line, '#')))
+			*p = 0;
+
+		/* Snip trailing whitespace for sanity */
+		p = line + strlen(line);
+		while (p > line && isspace(*(p-1)))
+			*(--p) = 0;
+
+		/* GUID line syntax */
+		if (parse_oemvar_guid_line(line, &curr_guid))
+			continue;
+
+		/* Variable definition? */
+		while (*line && isspace(*line)) line++;
+		var = line;
+		val = NULL;
+		while (*line && !isspace(*line)) line++;
+		if (*line) {
+			*line++ = 0;
+			while (*line && isspace(*line)) line++;
+			val = line;
+		}
+		if (*var && val && *val) {
+			vallen = unescape_oemvar_val(val);
+			pr_info("Setting oemvar: %s\n", var);
+			ret = efi_set_variable(curr_guid, var,
+					       (uint8_t *)val, vallen,
+					       EFI_VARIABLE_NON_VOLATILE |
+					       EFI_VARIABLE_RUNTIME_ACCESS |
+					       EFI_VARIABLE_BOOTSERVICE_ACCESS);
+		}
+	}
+
+	free(buf);
+	return ret;
+}
 
 static int cmd_flash_keystore(Hashmap *params, int fd, void *data,
 		unsigned sz)
@@ -1257,6 +1362,7 @@ void aboot_register_commands(void)
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt, UNLOCKED);
 	aboot_register_flash_cmd("mbr", cmd_flash_mbr, UNLOCKED);
 	aboot_register_flash_cmd("sfu", cmd_flash_sfu, VERIFIED);
+	aboot_register_flash_cmd("oemvars", cmd_flash_oemvars, UNLOCKED);
 	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
 
 	aboot_register_oem_cmd("adbd", start_adbd, UNLOCKED);

@@ -227,9 +227,18 @@ static enum device_state get_device_state(void)
 
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
-	if (ret || dsize != 1) {
+	if (ret || !dsize) {
 		pr_debug("Couldn't read OEMLock, assuming locked\n");
 		return LOCKED;
+	}
+
+	/* Legacy OEMLock format, used to have string "0" or "1"
+	 * for unlocked/locked */
+	if (dsize == 2 && data[1] == '\0') {
+		if (!strcmp(data, "0"))
+			return UNLOCKED;
+		if (!strcmp(data, "1"))
+			return LOCKED;
 	}
 
 	if (data[0] & OEM_LOCK_UNLOCKED)

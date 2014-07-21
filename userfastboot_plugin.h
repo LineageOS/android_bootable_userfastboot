@@ -20,15 +20,23 @@
 #include <userfastboot_ui.h>
 #include <cutils/hashmap.h>
 
-typedef int (*flash_func)(Hashmap *params, int *fd, unsigned sz);
+enum device_state {
+	LOCKED = 0,
+	VERIFIED = 1,
+	UNLOCKED = 2
+};
+
+typedef int (*flash_func)(Hashmap *params, int fd, void *data, unsigned sz);
 
 #define MAX_OEM_ARGS 64
 
 typedef int (*oem_func)(int argc, char **argv);
 
-int aboot_register_flash_cmd(char *key, flash_func callback);
+int aboot_register_flash_cmd(char *key, flash_func callback,
+		enum device_state min_state);
 
-int aboot_register_oem_cmd(char *key, oem_func callback);
+int aboot_register_oem_cmd(char *key, oem_func callback,
+		enum device_state min_state);
 
 /* Takes ownership of the value pointer, may be freed at any time. Do not
  * use a constant string! xstrdup() is your friend.

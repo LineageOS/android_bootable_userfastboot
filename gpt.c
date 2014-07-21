@@ -277,7 +277,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 
 #define MIN_DATA_PART_SIZE	350 /* CDD section 7.6.1 */
 
-int cmd_flash_gpt(Hashmap *params, int *fd, unsigned sz)
+int cmd_flash_gpt(Hashmap *params, int fd, void *data, unsigned sz)
 {
 	int ret = -1;
 	char *device, *plist, *buf, *conf_device;

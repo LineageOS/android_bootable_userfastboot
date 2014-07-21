@@ -42,7 +42,7 @@ int fastboot_handler(void);
  *   to indicate success/failure before returning
  */
 void fastboot_register(const char *prefix,
-                       void (*handle)(char *arg, int *fd, unsigned size));
+                       void (*handle)(char *arg, int fd, void *data, unsigned size));
 
 /* Fetch the value of a fastboot_publish variable */
 char *fastboot_getvar(char *name);
@@ -57,6 +57,11 @@ void fastboot_okay(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)))
  * It uses a copy of the name pointer, can be a constant string or something
  * on the heap; free it after publishing if you need to */
 void fastboot_publish(char *name, char *value);
+
+/**
+ * Force to close file descriptor used at open_usb()
+ * */
+void close_iofds(void);
 
 #endif
 

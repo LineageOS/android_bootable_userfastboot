@@ -46,6 +46,7 @@
 
 #include <zlib.h>
 #include <cutils/android_reboot.h>
+#include <bootloader.h>
 
 #include <sparse/sparse.h>
 #include "sparse_file.h"
@@ -914,6 +915,59 @@ char *get_dmi_data(const char *node)
 
 	return ret;
 }
+
+
+int copy_bootloader_file(char *filename, void *data, unsigned sz)
+{
+	struct fstab_rec *vol_bootloader;
+	char *destpath = NULL;
+	int ret = -1;
+
+	vol_bootloader = volume_for_name("bootloader");
+	if (vol_bootloader == NULL) {
+		pr_error("/bootloader not defined in fstab\n");
+		return -1;
+
+	}
+	if (mount_partition(vol_bootloader)) {
+		pr_error("Couldn't mount bootloader partition!\n");
+		return -1;
+	}
+
+	destpath = xasprintf("/mnt/bootloader/%s", filename);
+	if (named_file_write(destpath, data, sz, 0, 0)) {
+		pr_error("Couldn't write image to bootloader partition.\n");
+		goto out_unmount;
+	}
+
+	ret = 0;
+out_unmount:
+	unmount_partition(vol_bootloader);
+	free(destpath);
+	return ret;
+}
+
+
+int update_bcb(char *command)
+{
+	struct fstab_rec *vol_misc;
+	struct bootloader_message bcb;
+
+	vol_misc = volume_for_name("misc");
+	if (vol_misc == NULL) {
+		pr_error("/misc not defined in fstab\n");
+		return -1;
+	}
+
+	memset(&bcb, 0, sizeof(bcb));
+	strncpy(bcb.command, command, sizeof(bcb.command));
+	if (named_file_write(vol_misc->blk_device, (void *)&bcb, sizeof(bcb), 0, 0)) {
+		pr_error("Couldn't update BCB!\n");
+		return -1;
+	}
+	return 0;
+}
+
 
 /* vim: cindent:noexpandtab:softtabstop=8:shiftwidth=8:noshiftround
  */

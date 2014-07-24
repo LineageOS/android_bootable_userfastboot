@@ -45,6 +45,8 @@ int check_ext_superblock(struct fstab_rec *vol, int *sb_present);
 int unmount_partition(struct fstab_rec *vol);
 int get_volume_size(struct fstab_rec *vol, uint64_t *sz);
 int64_t get_disk_size(const char *disk_name);
+int update_bcb(char *command);
+int copy_bootloader_file(char *filename, void *data, unsigned sz);
 
 int string_list_iterate(char *stringlist, bool (*cb)(char *entry,
 			int index, void *context), void *context);

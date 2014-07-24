@@ -858,91 +858,67 @@ out:
 }
 
 
+
+
 static void cmd_boot(char *arg, int fd, void *data, unsigned sz)
 {
-	/* Copy the boot image to the ESP (bootloader partition)
-	 * and set the BCB so that the loader knows to use it */
-	struct fstab_rec *vol_bootloader, *vol_misc;
-	struct bootloader_message bcb;
-	int success = 0;
-
 	if (get_device_state() == LOCKED) {
 		fastboot_fail("bootloader must not be locked");
 		return;
 	}
 
-	pr_status("Preparing boot image\n");
-
-	vol_bootloader = volume_for_name("bootloader");
-	if (vol_bootloader == NULL) {
-		pr_error("/bootloader not defined in fstab\n");
-		fastboot_fail("can't find bootloader partition");
-		return;
-	}
-	vol_misc = volume_for_name("misc");
-	if (vol_misc == NULL) {
-		pr_error("/misc not defined in fstab\n");
-		fastboot_fail("can't find misc partition");
-		return;
-	}
-	if (mount_partition(vol_bootloader)) {
-		pr_error("Couldn't mount bootloader partition!\n");
-		fastboot_fail("couldn't mount bootloader partition");
+	pr_status("Preparing boot image");
+	if (copy_bootloader_file("bootonce.img", data, sz)) {
+		fastboot_fail("couldn't stage boot image");
 		return;
 	}
 
-	if (named_file_write("/mnt/bootloader/bootonce.img",
-				data, sz, 0, 0)) {
-		pr_error("Couldn't write boot image to bootloader partition.\n");
-		goto out;
+	if (update_bcb("bootonce-\\bootonce.img")) {
+		fastboot_fail("couldn't update bootloader control block");
+		return;
 	}
 
-	memset(&bcb, 0, sizeof(bcb));
-	snprintf(bcb.command, sizeof(bcb.command), "bootonce-\\bootonce.img");
-	if (named_file_write(vol_misc->blk_device, (void *)&bcb, sizeof(bcb), 0, 0)) {
-		pr_error("Couldn't update BCB!\n");
-		goto out;
+	pr_info("Booting into supplied image...\n");
+	fastboot_okay("");
+	close_iofds();
+	android_reboot(ANDROID_RB_RESTART, 0, 0);
+	pr_error("Reboot failed\n");
+}
+
+
+static int cmd_flash_efirun(Hashmap *params, int fs, void *data, unsigned sz)
+{
+	pr_status("Preparing EFI binary");
+
+	if (copy_bootloader_file("bootonce.efi", data, sz)) {
+		pr_error("couldn't stage efi binary");
+		return -1;
 	}
-	success = 1;
-out:
-	unmount_partition(vol_bootloader);
-	if (success) {
-		pr_info("Booting into supplied image...\n");
-		fastboot_okay("");
-		close_iofds();
-		android_reboot(ANDROID_RB_RESTART, 0, 0);
-		pr_error("Reboot failed\n");
+
+	if (update_bcb("bootonce-\\bootonce.efi")) {
+		pr_error("couldn't update bootloader control block");
+		return -1;
 	}
+
+	pr_info("Running EFI program...\n");
+	fastboot_okay("");
+	close_iofds();
+	android_reboot(ANDROID_RB_RESTART2, 0, "bootloader");
+	pr_error("Reboot failed\n");
+	return -1;
 }
 
 
 static int cmd_flash_sfu(Hashmap *params, int fd, void *data, unsigned sz)
 {
-	struct fstab_rec *vol_bootloader;
-	int ret = -1;
-
-	vol_bootloader = volume_for_name("bootloader");
-	if (vol_bootloader == NULL) {
-		pr_error("/bootloader not defined in fstab\n");
-		fastboot_fail("can't find bootloader partition");
-		return -1;
-	}
-	if (mount_partition(vol_bootloader)) {
-		pr_error("Couldn't mount bootloader partition!\n");
-		fastboot_fail("couldn't mount bootloader partition");
+	pr_status("Preparing capsule update");
+	if (copy_bootloader_file("BIOSUPDATE.fv", data, sz)) {
+		pr_error("couldn't stage capsule");
 		return -1;
 	}
 
-	if (named_file_write("/mnt/bootloader/BIOSUPDATE.fv",
-				data, sz, 0, 0)) {
-		pr_error("Couldn't write SFU capsule image to bootloader partition.\n");
-		goto out;
-	}
 	fastboot_info("SFU capsule will be applied on next reboot");
-	ret = 0;
-out:
-	unmount_partition(vol_bootloader);
-	return ret;
+	return 0;
 }
 
 static bool parse_oemvar_guid_line(char *line, efi_guid_t *g)
@@ -1364,6 +1340,7 @@ void aboot_register_commands(void)
 	aboot_register_flash_cmd("sfu", cmd_flash_sfu, VERIFIED);
 	aboot_register_flash_cmd("oemvars", cmd_flash_oemvars, UNLOCKED);
 	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
+	aboot_register_flash_cmd("efirun", cmd_flash_efirun, UNLOCKED);
 
 	aboot_register_oem_cmd("adbd", start_adbd, UNLOCKED);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk, UNLOCKED);

@@ -26,14 +26,15 @@ endif
 LOCAL_MODULE := userfastboot
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_PATH := $(PRODUCT_OUT)/userfastboot
-LOCAL_SHARED_LIBRARIES := liblog libext4_utils libz libcutils
-LOCAL_STATIC_LIBRARIES += libsparse_static libminui libpng \
-			  libselinux libfs_mgr libstdc++ libiniparser libgpt_static \
-			  libefivar
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
+LOCAL_STATIC_LIBRARIES := libc liblog libz libm libcutils \
+			  libsparse_static libminui libpng \
+			  libselinux libfs_mgr libstdc++ libiniparser \
+			  libgpt_static libefivar
+LOCAL_FORCE_STATIC_EXECUTABLE := true
 
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
-LOCAL_C_INCLUDES += external/zlib \
-		    external/libpng \
+LOCAL_C_INCLUDES += external/libpng \
 		    external/iniparser/src \
 		    external/efivar/src \
 		    bootable/userfastboot/microui \
@@ -82,10 +83,6 @@ LOCAL_C_INCLUDES += $(dir $(inc))
 
 ifneq ($(USERFASTBOOT_NO_GUI),true)
 LOCAL_CFLAGS += -DUSE_GUI
-endif
-
-ifeq ($(USERFASTBOOT_SKIP_FSCK),true)
-LOCAL_CFLAGS += -DSKIP_FSCK
 endif
 
 include $(BUILD_EXECUTABLE)

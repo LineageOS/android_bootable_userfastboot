@@ -4,6 +4,9 @@ ufb_src_dir := bootable/userfastboot
 # need and have some mechanism to pull in dependencies instead
 # of explicitly enumerating everything that goes in
 # use something like add-required-deps
+#
+# At the moment, what we want is a shell, toolbox, and dhcpcd. The rest
+# are just supporting modules.
 ufb_modules := \
 	libc \
 	libcutils \
@@ -13,30 +16,14 @@ ufb_modules := \
 	libm \
 	libstdc++ \
 	libselinux \
+	libusbhost \
 	linker \
 	linker64 \
 	mksh \
 	systembinsh \
 	sh \
 	toolbox \
-	libext2fs \
-	libext2_com_err \
-	libext2_e2p \
-	libext2_blkid \
-	libext2_uuid \
-	libext2_profile \
-	libext4_utils \
-	libsparse \
-	libusbhost \
-	libz \
-	resize2fs \
-	tune2fs \
-	e2fsck \
-	gzip \
-	netcfg \
-	init.utilitynet.sh \
-	dhcpcd \
-	pstore-clean
+	dhcpcd
 
 ifneq ($(TARGET_BUILD_VARIANT),user)
     ufb_modules += su
@@ -87,13 +74,12 @@ $(USERFASTBOOT_RAMDISK): \
 		$(ufb_bin) \
 		$(efibootmgr) \
 		$(INSTALLED_RAMDISK_TARGET) \
-		$(INSTALLED_SYSTEMIMAGE) \
 		$(MINIGZIP) \
 		$(recovery_fstab) \
 		$(ufb_initrc) \
 		$(USERFASTBOOT_HARDWARE_INITRC) \
 		$(ufb_resources_deps) \
-		$(ufb_system_files) \
+		$(ufb_system_files) | $(ACP) \
 
 	$(hide) rm -rf $(USERFASTBOOT_ROOT_OUT)
 	$(hide) mkdir -p $(USERFASTBOOT_ROOT_OUT)

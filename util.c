@@ -44,7 +44,6 @@
 #include <inttypes.h>
 #include <linux/loop.h>
 
-#include <zlib.h>
 #include <cutils/android_reboot.h>
 #include <bootloader.h>
 

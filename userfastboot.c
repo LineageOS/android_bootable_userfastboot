@@ -75,7 +75,9 @@ int main(int argc, char **argv)
 
 	/* initialize libmicroui */
 #ifdef USE_GUI
+	KLOG_ERROR("userfastboot", "starting graphics\n");
 	mui_init();
+	KLOG_ERROR("userfastboot", "graphics OK\n");
 #endif
 	mui_set_background(BACKGROUND_ICON_INSTALLING);
 

@@ -48,6 +48,8 @@
 
 #include <cutils/android_reboot.h>
 #include <cutils/klog.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
 
 #include "aboot.h"
 #include "userfastboot_util.h"
@@ -72,6 +74,9 @@ int main(int argc, char **argv)
 
 	klog_init();
 	klog_set_level(7);
+
+	OpenSSL_add_all_algorithms();
+	ERR_load_crypto_strings();
 
 	/* initialize libmicroui */
 #ifdef USE_GUI

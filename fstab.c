@@ -114,6 +114,7 @@ char *get_primary_disk_name(void)
 	while (1) {
 		struct dirent *dp;
 		int64_t removable, disk_size;
+		char *devtype;
 
 		dp = readdir(dir);
 		if (!dp)
@@ -133,6 +134,18 @@ char *get_primary_disk_name(void)
 			continue;
 		}
 
+		/*
+		 * SD cards may sometimes also have removable set to 0.
+		 * So skip if it is SD card.
+		 */
+		devtype = read_sysfs("/sys/block/%s/device/type", dp->d_name);
+		if (devtype && !strcmp(devtype, "SD")) {
+			pr_verbose("%s is of type %s, skipping\n",
+				dp->d_name, devtype);
+			free(devtype);
+			continue;
+		}
+		free(devtype);
 		disk_size = get_disk_size(dp->d_name);
 		pr_debug("%s --> %" PRId64 "M\n", dp->d_name, disk_size >> 20);
 		if (disk_size > largest) {

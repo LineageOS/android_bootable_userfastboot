@@ -8,6 +8,7 @@ ufb_src_dir := bootable/userfastboot
 # At the moment, what we want is a shell, toolbox, and dhcpcd. The rest
 # are just supporting modules.
 ufb_modules := \
+	libcrypto \
 	libc \
 	libcutils \
 	libnetutils \

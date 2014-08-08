@@ -143,6 +143,7 @@ $(USERFASTBOOT_BOOTIMAGE): \
 		     $(BOARD_MKBOOTIMG_ARGS) \
 		     --output $@
 	@echo "Created UserFastBoot bootimage: $@"
+	$(BOOT_SIGNER) /fastboot $(USERFASTBOOT_BOOTIMAGE) $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_VERITY_SIGNING_KEY) $(USERFASTBOOT_BOOTIMAGE)
 
 .PHONY: userfastboot-ramdisk
 userfastboot-ramdisk: $(USERFASTBOOT_RAMDISK)

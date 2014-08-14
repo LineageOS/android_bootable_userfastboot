@@ -33,8 +33,6 @@
 #define pr_error(...) do { \
 	KLOG_ERROR("userfastboot", __VA_ARGS__); \
 	mui_print("E: " __VA_ARGS__); \
-	mui_set_background(BACKGROUND_ICON_ERROR); \
-	mui_show_text(1); \
 	fastboot_info(__VA_ARGS__); \
 	} while (0)
 

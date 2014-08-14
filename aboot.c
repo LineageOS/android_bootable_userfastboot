@@ -105,6 +105,11 @@
 /* EFI Variable to store user-supplied key store binary data */
 #define KEYSTORE_VAR		"KeyStore"
 
+#define LOADER_GUID \
+	EFI_GUID(0x4a67b082, 0x0a4c, 0x41cf, 0xb6c7, 0x44, 0x0b, 0x29, 0xbb, 0x8c, 0x4f);
+
+#define LOADER_VERSION_VAR      "LoaderVersion"
+
 /* Initial list of flash targets that are allowed in VERIFIED state */
 static char *default_flash_whitelist[] = {
 	"bootloader",
@@ -214,38 +219,52 @@ static enum device_state get_device_state(void)
 {
 	int ret;
 	uint32_t attributes;
-	char *data;
+	char *data = NULL;
 	size_t dsize;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+	enum device_state state;
 
 	if (!efi_variables_supported()) {
 		pr_debug("EFI variables not supported, assuming permanently unlocked non-EFI system\n");
-		return UNLOCKED;
+		state = UNLOCKED;
+		goto out;
 	}
 
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
 	if (ret || !dsize) {
 		pr_debug("Couldn't read OEMLock, assuming locked\n");
-		return LOCKED;
+		state = LOCKED;
+		goto out;
 	}
 
 	/* Legacy OEMLock format, used to have string "0" or "1"
 	 * for unlocked/locked */
 	if (dsize == 2 && data[1] == '\0') {
-		if (!strcmp(data, "0"))
-			return UNLOCKED;
-		if (!strcmp(data, "1"))
-			return LOCKED;
+		if (!strcmp(data, "0")) {
+			state = UNLOCKED;
+			goto out;
+		}
+		if (!strcmp(data, "1")) {
+			state = LOCKED;
+			goto out;
+		}
 	}
 
-	if (data[0] & OEM_LOCK_UNLOCKED)
-		return UNLOCKED;
+	if (data[0] & OEM_LOCK_UNLOCKED) {
+		state = UNLOCKED;
+		goto out;
+	}
 
-	if (data[0] & OEM_LOCK_VERIFIED)
-		return VERIFIED;
+	if (data[0] & OEM_LOCK_VERIFIED) {
+		state = VERIFIED;
+		goto out;
+	}
 
-	return LOCKED;
+	state = LOCKED;
+out:
+	free(data);
+	return state;
 }
 
 
@@ -253,7 +272,7 @@ static void fetch_boot_state(void)
 {
 	int ret;
 	uint32_t attributes;
-	char *data;
+	char *data = NULL;
 	size_t dsize;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	char *state;
@@ -281,6 +300,7 @@ static void fetch_boot_state(void)
 			state = "unknown";
 		}
 	}
+	free(data);
 
 	fastboot_publish("boot-state", xstrdup(state));
 }
@@ -290,27 +310,38 @@ static bool is_secure_boot_enabled(void)
 {
 	int ret;
 	uint32_t attributes;
-	char *data;
+	char *data = NULL;
 	size_t dsize;
 	efi_guid_t global_guid = EFI_GLOBAL_VARIABLE;
+	bool secure;
 
-	if (!efi_variables_supported())
-		return false;
+	if (!efi_variables_supported()) {
+		secure = false;
+		goto out;
+	}
 
 	ret = efi_get_variable(global_guid, SECURE_BOOT_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
 	if (ret) {
-		pr_debug("Couldn't read SecureBootk\n");
-		return false;
+		pr_debug("Couldn't read SecureBoot\n");
+		secure = false;
+		goto out;
 	}
 
-	if (!dsize)
-		return false;
+	if (!dsize) {
+		secure = false;
+		goto out;
+	}
 
-	if (data[0] == 1)
-		return true;
+	if (data[0] == 1) {
+		secure = true;
+		goto out;
+	}
 
-	return false;
+	secure = false;
+out:
+	free(data);
+	return secure;
 }
 
 
@@ -1234,7 +1265,8 @@ void populate_status_info(void)
 	pr_debug("updating status text\n");
 	interface_info = get_network_interface_status();
 
-	infostring = xasprintf("Userfastboot %s for %s\n \n"
+	infostring = xasprintf("Userfastboot for %s\n \n"
+		     "      bootloader: %s\n"
 		     "          kernel: %s\n"
 		     "        firmware: %s\n"
 		     "           board: %s\n"
@@ -1242,8 +1274,9 @@ void populate_status_info(void)
 		     "    device state: %s\n"
 		     "UEFI secure boot: %s\n"
 		     "      boot state: %s\n"
-		     " \n%s", USERFASTBOOT_VERSION,
+		     " \n%s",
 		     fastboot_getvar("product"),
+		     fastboot_getvar("version-bootloader"),
 		     fastboot_getvar("kernel"),
 		     fastboot_getvar("firmware"),
 		     fastboot_getvar("board"),
@@ -1274,6 +1307,40 @@ static Hashmap *init_hashmap_list(char ** init_list)
 }
 
 
+static char *get_loader_version(void)
+{
+	int ret;
+	efi_guid_t loader_guid = LOADER_GUID;
+	uint16_t *data16, *pos16;
+	char *data, *pos, *version;
+	size_t dsize;
+	uint32_t attributes;
+
+	ret = efi_get_variable(loader_guid, LOADER_VERSION_VAR, (uint8_t **)&data16,
+			&dsize, &attributes);
+	if (ret || !dsize || dsize % 2 != 0)
+		return xstrdup("unknown+userfastboot-" USERFASTBOOT_VERSION);
+
+	/* poor-man's 8 bit char conversion */
+	data = xmalloc((dsize / 2) + 1);
+	pos = data;
+	pos16 = data16;
+	while (pos16 < (data16 + (dsize / 2))) {
+		*pos = (char)*pos16;
+		if (!*pos16)
+			break;
+		pos++;
+		pos16++;
+	}
+	data[dsize / 2] = '\0';
+
+	version = xasprintf("%s+userfastboot-%s", data, USERFASTBOOT_VERSION);
+	free(data);
+	free(data16);
+	return version;
+}
+
+
 void aboot_register_commands(void)
 {
 	char *bios_vendor, *bios_version, *bios_string;
@@ -1287,7 +1354,7 @@ void aboot_register_commands(void)
 
 	fastboot_publish("product", xstrdup(DEVICE_NAME));
 	fastboot_publish("product-name", get_dmi_data("product_name"));
-	fastboot_publish("version-bootloader", xstrdup(USERFASTBOOT_VERSION));
+	fastboot_publish("version-bootloader", get_loader_version());
 	fastboot_publish("version-baseband", xstrdup("N/A"));
 	publish_from_prop("serialno", "ro.serialno", "unknown");
 

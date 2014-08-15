@@ -140,6 +140,12 @@ static int decode_auth_attributes(const unsigned char **datap, long *sizep,
 				NULL, NULL))
 		return -1;
 
+	/* Note the address and size of auth_attributes block,
+	 * as this blob needs to be appended to the boot image
+	 * before generating a signature */
+	aa->data = orig;
+	aa->data_sz = *datap - orig;
+
 	*sizep = *sizep - (*datap - orig);
 	return 0;
 }
@@ -282,6 +288,11 @@ static int decode_keystore(const unsigned char **datap, long *sizep,
 		pr_error("bad keybag data\n");
 		return -1;
 	}
+
+	/* size of the so-called 'inner keystore' before signature
+	 * was appended, needed for verification */
+	ks->data = orig;
+	ks->inner_sz = *datap - orig;
 
 	if (decode_boot_signature(datap, &seq_size, &ks->sig)) {
 		free_keybag(ks->bag);

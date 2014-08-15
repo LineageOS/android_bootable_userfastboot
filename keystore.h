@@ -85,6 +85,8 @@ struct keyinfo {
 struct auth_attributes {
 	char target[TARGET_MAX];
 	long length;
+	const void *data;
+	long data_sz;
 };
 
 struct keybag {
@@ -104,6 +106,8 @@ struct keystore {
 	long format_version;
 	struct keybag *bag; // linked list of these
 	struct boot_signature sig;
+	const void *data;
+	long inner_sz;
 };
 
 struct keystore *get_keystore(const void *data, long size);

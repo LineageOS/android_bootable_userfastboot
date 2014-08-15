@@ -36,7 +36,7 @@ static void free_keybag(struct keybag *kb)
 		kb = kb->next;
 
 		free(n->info.id.parameters);
-		free(n->info.key_material.modulus);
+		RSA_free(n->info.key_material);
 		free(n);
 	}
 }
@@ -89,8 +89,8 @@ void dump_keystore(struct keystore *ks)
 		struct keyinfo *ki = &kb->info;
 		pr_debug("key-info ---------\n");
 		pr_debug("algo id               %d\n", ki->id.nid);
-		pr_debug("modulus len           %ld\n", ki->key_material.modulus_len);
-		pr_debug("exponent              %lx\n", ki->key_material.exponent);
+		pr_debug("modulus len           %d\n",
+				BN_num_bytes(ki->key_material->n));
 		kb = kb->next;
 		pr_debug("--end-key-info----\n");
 	}
@@ -178,6 +178,7 @@ static int decode_boot_signature(const unsigned char **datap, long *sizep,
 
 	if (decode_octet_string(datap, &seq_size, (unsigned char **)&bs->signature,
 				&bs->signature_len)) {
+		pr_error("bad signature data\n");
 		free(bs->id.parameters);
 		return -1;
 	}
@@ -188,26 +189,48 @@ static int decode_boot_signature(const unsigned char **datap, long *sizep,
 
 
 static int decode_rsa_public_key(const unsigned char **datap, long *sizep,
-		struct rsa_public_key *rpk)
+		RSA **rsap)
 {
 	long seq_size = *sizep;
 	const unsigned char *orig = *datap;
+	unsigned char *modulus = NULL;
+	long modulus_len;
+	unsigned char *exponent = NULL;
+	long exponent_len;
+	RSA *rsa = NULL;
 
 	if (consume_sequence(datap, &seq_size) < 0)
-		return -1;
+		goto out_err;
 
-	if (decode_integer(datap, &seq_size, 1, NULL, &rpk->modulus,
-				&rpk->modulus_len))
-		return -1;
+	if (decode_integer(datap, &seq_size, 1, NULL, &modulus,
+				&modulus_len))
+		goto out_err;
 
-	if (decode_integer(datap, &seq_size, 0, &rpk->exponent,
-				NULL, NULL)) {
-		free(rpk->modulus);
-		return -1;
-	}
+	if (decode_integer(datap, &seq_size, 1, NULL, &exponent,
+				&exponent_len))
+		goto out_err;
 
+	rsa = RSA_new();
+	if (!rsa)
+		goto out_err;
+	rsa->n = BN_bin2bn(modulus, modulus_len, NULL);
+	if (!rsa->n)
+		goto out_err;
+	rsa->e = BN_bin2bn(exponent, exponent_len, NULL);
+	if (!rsa->e)
+		goto out_err;
+
+	free(modulus);
+	free(exponent);
+	*rsap = rsa;
 	*sizep = *sizep - (*datap - orig);
 	return 0;
+out_err:
+	if (rsa)
+		RSA_free(rsa);
+	free(exponent);
+	free(modulus);
+	return -1;
 }
 
 

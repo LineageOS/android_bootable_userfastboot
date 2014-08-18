@@ -1059,7 +1059,7 @@ static void cmd_reboot_bl(char *arg, int fd, void *data, unsigned sz)
 	sync();
 	close_iofds();
 	pr_info("Restarting UserFastBoot...\n");
-	android_reboot(ANDROID_RB_RESTART2, 0, "fastboot");
+	android_reboot(ANDROID_RB_RESTART2, 0, "bootloader");
 	pr_error("Reboot failed\n");
 }
 

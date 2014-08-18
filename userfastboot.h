@@ -15,25 +15,14 @@ extern struct selabel_handle *sehandle;
 
 #define MEGABYTE	(1024 * 1024)
 
-/* Inspect a volume looking for an automatic SW update. If it's
- * there, provision filesystems and apply it. */
-int try_update_sw(struct fstab_rec *vol);
-
-/* global libdiskconfig data structure representing the intended layout of
- * the internal disk, as read from /etc/disk_layout.conf */
-extern struct disk_info *disk_info;
-
 /* Serialize all disk operations. Grabbed by fastboot any time it is
  * performing a command, and also any worker thread handlers */
 extern pthread_mutex_t action_mutex;
 
-/* If set, apply this update on 'fastboot continue' */
-extern char *g_update_location;
-
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define USERFASTBOOT_VERSION       "07.03"
+#define USERFASTBOOT_VERSION       "07.04"
 
-/* struct fstab_rec entry in recovery.fstab for the SD card */
-#define SDCARD_VOLUME		"/sdcard"
+#define FASTBOOT_GUID \
+	EFI_GUID(0x1ac80a82, 0x4f0c, 0x456b, 0x9a99, 0xde, 0xbe, 0xb4, 0x31, 0xfc, 0xc1);
 
 #endif

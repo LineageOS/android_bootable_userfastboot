@@ -8,6 +8,7 @@ ufb_src_dir := bootable/userfastboot
 # At the moment, what we want is a shell, toolbox, and dhcpcd. The rest
 # are just supporting modules.
 ufb_modules := \
+	libcrypto \
 	libc \
 	libcutils \
 	libnetutils \
@@ -133,6 +134,7 @@ $(USERFASTBOOT_BOOTIMAGE): \
 		$(USERFASTBOOT_RAMDISK) \
 		$(BOARD_KERNEL_CMDLINE_FILE) \
 		$(USERFASTBOOT_2NDBOOTLOADER) \
+		$(BOOT_SIGNER) \
 		$(MKBOOTIMG) \
 
 	$(hide) $(MKBOOTIMG) --kernel $(INSTALLED_KERNEL_TARGET) \
@@ -142,6 +144,7 @@ $(USERFASTBOOT_BOOTIMAGE): \
 		     $(BOARD_MKBOOTIMG_ARGS) \
 		     --output $@
 	@echo "Created UserFastBoot bootimage: $@"
+	$(BOOT_SIGNER) /fastboot $(USERFASTBOOT_BOOTIMAGE) $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_VERITY_SIGNING_KEY) $(USERFASTBOOT_BOOTIMAGE)
 
 .PHONY: userfastboot-ramdisk
 userfastboot-ramdisk: $(USERFASTBOOT_RAMDISK)

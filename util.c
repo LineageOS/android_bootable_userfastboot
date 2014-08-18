@@ -68,6 +68,8 @@ extern int make_ext4fs(const char *filename, int64_t len,
 void die(void)
 {
 	pr_error("userfastboot has encountered an unrecoverable problem, exiting!\n");
+	mui_set_background(BACKGROUND_ICON_ERROR);
+	mui_show_text(1);
 	exit(1);
 }
 

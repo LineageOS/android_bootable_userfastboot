@@ -13,10 +13,12 @@ LOCAL_SRC_FILES := \
 	mbr.c \
 	network.c \
 	ui.c \
-	sanity.c
+	sanity.c \
+	keystore.c \
+	asn1.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
-	-W -Wall -Wno-unused-parameter -Wno-format-zero-length -Werror
+	-W -Wall -Wextra -Wno-unused-parameter -Wno-format-zero-length -Werror
 
 ifeq (true,$(TARGET_PREFER_32_BIT_EXECUTABLES))
 # We are doing a 32p build, force recovery to be 64bit
@@ -30,13 +32,14 @@ LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
 LOCAL_STATIC_LIBRARIES := libc liblog libz libm libcutils \
 			  libsparse_static libminui libpng \
 			  libselinux libfs_mgr libstdc++ libiniparser \
-			  libgpt_static libefivar
+			  libgpt_static libefivar libcrypto_static
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
 LOCAL_C_INCLUDES += external/libpng \
 		    external/iniparser/src \
 		    external/efivar/src \
+		    external/openssl/include \
 		    bootable/userfastboot/microui \
 		    bootable/userfastboot/libgpt/include \
 		    bootable/iago/include \

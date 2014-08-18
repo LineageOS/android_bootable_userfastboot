@@ -134,6 +134,7 @@ int decode_printable_string(const unsigned char **datap, long *sizep,
 {
 	ASN1_STRING *s;
 	const unsigned char *orig;
+	int len;
 
 	orig = *datap;
 	s = M_d2i_ASN1_PRINTABLESTRING(NULL, datap, *sizep);
@@ -146,8 +147,17 @@ int decode_printable_string(const unsigned char **datap, long *sizep,
 		M_ASN1_PRINTABLESTRING_free(s);
 		return -1;
 	}
-	// XXX is s->data guaranteed to be NULL terminated?
-	strncpy(buf, (char *)s->data, buf_sz);
+
+	/* s->length contains the length of the string *NOT* including
+	 * the trailing \0. It is guaranteed to be NULL terminated however.
+	 * See d2i_ASN1_type_bytes() */
+	if ((size_t)(s->length + 1) > buf_sz)
+		len = buf_sz;
+	else
+		len = s->length + 1;
+
+	memcpy(buf, s->data, len);
+	buf[len - 1] = '\0';
 	M_ASN1_PRINTABLESTRING_free(s);
 	*sizep = *sizep - (*datap - orig);
 	return 0;

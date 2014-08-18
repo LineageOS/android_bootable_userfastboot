@@ -106,7 +106,7 @@ struct keystore {
 	long format_version;
 	struct keybag *bag; // linked list of these
 	struct boot_signature sig;
-	const void *data;
+	char *inner_data;
 	long inner_sz;
 };
 

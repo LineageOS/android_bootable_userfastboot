@@ -49,6 +49,7 @@ void free_keystore(struct keystore *ks)
 
 	free(ks->sig.signature);
 	free(ks->sig.id.parameters);
+	free(ks->inner_data);
 	free_keybag(ks->bag);
 	free(ks);
 }
@@ -276,6 +277,7 @@ static int decode_keystore(const unsigned char **datap, long *sizep,
 {
 	long seq_size = *sizep;
 	const unsigned char *orig = *datap;
+	int new_seq_size;
 
 	if (consume_sequence(datap, &seq_size) < 0)
 		return -1;
@@ -291,11 +293,23 @@ static int decode_keystore(const unsigned char **datap, long *sizep,
 
 	/* size of the so-called 'inner keystore' before signature
 	 * was appended, needed for verification */
-	ks->data = orig;
 	ks->inner_sz = *datap - orig;
+	ks->inner_data = malloc(ks->inner_sz);
+	if (!ks->inner_data) {
+		pr_error("out of memory\n");
+		free_keybag(ks->bag);
+		return -1;
+	}
+	memcpy(ks->inner_data, orig, ks->inner_sz);
+	/* Now fix the size data in the sequence struct since the
+	 * 'inner keybag' sequence does not contain a signature block */
+	new_seq_size = ks->inner_sz - 4; // size of the sequence header
+	ks->inner_data[2] = (new_seq_size >> 8) & 0xFF;
+	ks->inner_data[3] = new_seq_size & 0xff;
 
 	if (decode_boot_signature(datap, &seq_size, &ks->sig)) {
 		free_keybag(ks->bag);
+		free(ks->inner_data);
 		pr_error("bad boot signature data\n");
 		return -1;
 	}

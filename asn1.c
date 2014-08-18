@@ -83,7 +83,7 @@ int decode_octet_string(const unsigned char **datap, long *sizep,
 		pr_error("octet string conversion failed\n");
 		return -1;
 	}
-	if (!os->length <= 0) {
+	if (os->length <= 0) {
 		pr_error("empty octet string\n");
 		M_ASN1_OCTET_STRING_free(os);
 		return -1;

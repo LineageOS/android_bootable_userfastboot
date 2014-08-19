@@ -112,8 +112,10 @@ struct boot_signature *get_boot_signature(const void *data, long size);
 void free_keystore(struct keystore *ks);
 void free_boot_signature(struct boot_signature *bs);
 
+#ifndef KERNELFLINGER
 void dump_boot_signature(struct boot_signature *bs);
 void dump_keystore(struct keystore *ks);
+#endif
 
 #endif
 

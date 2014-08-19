@@ -65,6 +65,8 @@ void free_boot_signature(struct boot_signature *bs)
 	free(bs);
 }
 
+
+#ifndef KERNELFLINGER
 void dump_boot_signature(struct boot_signature *bs)
 {
 	pr_debug("boot sig format       %ld\n", bs->format_version);
@@ -98,7 +100,7 @@ void dump_keystore(struct keystore *ks)
 	dump_boot_signature(&ks->sig);
 	pr_debug("-end-keystore-------\n");
 }
-
+#endif
 
 static int decode_algorithm_identifier(const unsigned char **datap, long *sizep,
 		struct algorithm_identifier *ai)

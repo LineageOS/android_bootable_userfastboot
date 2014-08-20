@@ -17,6 +17,8 @@
 #ifndef _KEYSTORE_H_
 #define _KEYSTORE_H_
 
+#include <openssl/rsa.h>
+
 #define TARGET_MAX		32
 
 /* ASN.1 grammar for keystores
@@ -65,12 +67,6 @@
  * END
  */
 
-struct rsa_public_key {
-	unsigned char *modulus;
-	long modulus_len;
-	long exponent;
-};
-
 struct algorithm_identifier {
 	int nid;
 	void *parameters;
@@ -79,7 +75,7 @@ struct algorithm_identifier {
 
 struct keyinfo {
 	struct algorithm_identifier id;
-	struct rsa_public_key key_material;
+	RSA *key_material;
 };
 
 struct auth_attributes {
@@ -106,7 +102,7 @@ struct keystore {
 	long format_version;
 	struct keybag *bag; // linked list of these
 	struct boot_signature sig;
-	const void *data;
+	char *inner_data;
 	long inner_sz;
 };
 
@@ -116,8 +112,10 @@ struct boot_signature *get_boot_signature(const void *data, long size);
 void free_keystore(struct keystore *ks);
 void free_boot_signature(struct boot_signature *bs);
 
+#ifndef KERNELFLINGER
 void dump_boot_signature(struct boot_signature *bs);
 void dump_keystore(struct keystore *ks);
+#endif
 
 #endif
 

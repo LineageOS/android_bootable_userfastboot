@@ -36,7 +36,7 @@ static void free_keybag(struct keybag *kb)
 		kb = kb->next;
 
 		free(n->info.id.parameters);
-		free(n->info.key_material.modulus);
+		RSA_free(n->info.key_material);
 		free(n);
 	}
 }
@@ -49,6 +49,7 @@ void free_keystore(struct keystore *ks)
 
 	free(ks->sig.signature);
 	free(ks->sig.id.parameters);
+	free(ks->inner_data);
 	free_keybag(ks->bag);
 	free(ks);
 }
@@ -64,6 +65,8 @@ void free_boot_signature(struct boot_signature *bs)
 	free(bs);
 }
 
+
+#ifndef KERNELFLINGER
 void dump_boot_signature(struct boot_signature *bs)
 {
 	pr_debug("boot sig format       %ld\n", bs->format_version);
@@ -88,8 +91,8 @@ void dump_keystore(struct keystore *ks)
 		struct keyinfo *ki = &kb->info;
 		pr_debug("key-info ---------\n");
 		pr_debug("algo id               %d\n", ki->id.nid);
-		pr_debug("modulus len           %ld\n", ki->key_material.modulus_len);
-		pr_debug("exponent              %lx\n", ki->key_material.exponent);
+		pr_debug("modulus len           %d\n",
+				BN_num_bytes(ki->key_material->n));
 		kb = kb->next;
 		pr_debug("--end-key-info----\n");
 	}
@@ -97,7 +100,7 @@ void dump_keystore(struct keystore *ks)
 	dump_boot_signature(&ks->sig);
 	pr_debug("-end-keystore-------\n");
 }
-
+#endif
 
 static int decode_algorithm_identifier(const unsigned char **datap, long *sizep,
 		struct algorithm_identifier *ai)
@@ -177,6 +180,7 @@ static int decode_boot_signature(const unsigned char **datap, long *sizep,
 
 	if (decode_octet_string(datap, &seq_size, (unsigned char **)&bs->signature,
 				&bs->signature_len)) {
+		pr_error("bad signature data\n");
 		free(bs->id.parameters);
 		return -1;
 	}
@@ -187,26 +191,48 @@ static int decode_boot_signature(const unsigned char **datap, long *sizep,
 
 
 static int decode_rsa_public_key(const unsigned char **datap, long *sizep,
-		struct rsa_public_key *rpk)
+		RSA **rsap)
 {
 	long seq_size = *sizep;
 	const unsigned char *orig = *datap;
+	unsigned char *modulus = NULL;
+	long modulus_len;
+	unsigned char *exponent = NULL;
+	long exponent_len;
+	RSA *rsa = NULL;
 
 	if (consume_sequence(datap, &seq_size) < 0)
-		return -1;
+		goto out_err;
 
-	if (decode_integer(datap, &seq_size, 1, NULL, &rpk->modulus,
-				&rpk->modulus_len))
-		return -1;
+	if (decode_integer(datap, &seq_size, 1, NULL, &modulus,
+				&modulus_len))
+		goto out_err;
 
-	if (decode_integer(datap, &seq_size, 0, &rpk->exponent,
-				NULL, NULL)) {
-		free(rpk->modulus);
-		return -1;
-	}
+	if (decode_integer(datap, &seq_size, 1, NULL, &exponent,
+				&exponent_len))
+		goto out_err;
 
+	rsa = RSA_new();
+	if (!rsa)
+		goto out_err;
+	rsa->n = BN_bin2bn(modulus, modulus_len, NULL);
+	if (!rsa->n)
+		goto out_err;
+	rsa->e = BN_bin2bn(exponent, exponent_len, NULL);
+	if (!rsa->e)
+		goto out_err;
+
+	free(modulus);
+	free(exponent);
+	*rsap = rsa;
 	*sizep = *sizep - (*datap - orig);
 	return 0;
+out_err:
+	if (rsa)
+		RSA_free(rsa);
+	free(exponent);
+	free(modulus);
+	return -1;
 }
 
 
@@ -276,6 +302,7 @@ static int decode_keystore(const unsigned char **datap, long *sizep,
 {
 	long seq_size = *sizep;
 	const unsigned char *orig = *datap;
+	int new_seq_size;
 
 	if (consume_sequence(datap, &seq_size) < 0)
 		return -1;
@@ -291,11 +318,23 @@ static int decode_keystore(const unsigned char **datap, long *sizep,
 
 	/* size of the so-called 'inner keystore' before signature
 	 * was appended, needed for verification */
-	ks->data = orig;
 	ks->inner_sz = *datap - orig;
+	ks->inner_data = malloc(ks->inner_sz);
+	if (!ks->inner_data) {
+		pr_error("out of memory\n");
+		free_keybag(ks->bag);
+		return -1;
+	}
+	memcpy(ks->inner_data, orig, ks->inner_sz);
+	/* Now fix the size data in the sequence struct since the
+	 * 'inner keybag' sequence does not contain a signature block */
+	new_seq_size = ks->inner_sz - 4; // size of the sequence header
+	ks->inner_data[2] = (new_seq_size >> 8) & 0xFF;
+	ks->inner_data[3] = new_seq_size & 0xff;
 
 	if (decode_boot_signature(datap, &seq_size, &ks->sig)) {
 		free_keybag(ks->bag);
+		free(ks->inner_data);
 		pr_error("bad boot signature data\n");
 		return -1;
 	}

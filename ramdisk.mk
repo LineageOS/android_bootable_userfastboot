@@ -92,7 +92,7 @@ $(USERFASTBOOT_RAMDISK): \
 	$(hide) mkdir -p $(ufb_system_out)
 	$(hide) mkdir -p $(ufb_system_out)/etc
 	$(hide) mkdir -p $(ufb_system_out)/bin
-	$(hide) $(ACP) -fr $(TARGET_ROOT_OUT) $(ufb_out)
+	$(hide) $(ACP) -frd $(TARGET_ROOT_OUT) $(ufb_out)
 	$(hide) $(ACP) -f $(ufb_initrc) $(USERFASTBOOT_ROOT_OUT)/init.rc
 ifneq ($(strip $(USERFASTBOOT_HARDWARE_INITRC)),)
 	$(hide) $(ACP) -f $(USERFASTBOOT_HARDWARE_INITRC) $(USERFASTBOOT_ROOT_OUT)/init.userfastboot.rc

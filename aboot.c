@@ -233,8 +233,10 @@ static enum device_state get_device_state(void)
 	ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
 			&dsize, &attributes);
 	if (ret || !dsize) {
-		pr_debug("Couldn't read OEMLock, assuming locked\n");
-		state = LOCKED;
+		/* If the variable does not exist, assume this is an
+		 * unlocked, non-provisioned device */
+		pr_debug("Couldn't read OEMLock, assuming unlocked\n");
+		state = UNLOCKED;
 		goto out;
 	}
 
@@ -398,6 +400,44 @@ out:
 	return result;
 }
 
+static int is_unlock_enabled(void)
+{
+	int persistent_fd = -1;
+	char oem_unlock_allowed = 0;
+	struct fstab_rec *fsr;
+	int ret = 0;
+
+	/* If this partition doesn't exist, we need to assume unlock is enabled
+	 * in order to allow for initial provisioning of a blank device.
+	 * Non-GMS devices will never have this partition */
+	fsr = volume_for_name("persistent");
+	if (!fsr) {
+		ret = 1;
+		goto out;
+	}
+
+	persistent_fd = open(fsr->blk_device, O_RDONLY);
+	if (persistent_fd < 0) {
+		ret = 1;
+		pr_perror("open");
+		goto out;
+	}
+
+	if (lseek(persistent_fd, -1, SEEK_END) < 0) {
+		pr_perror("lseek");
+		goto out;
+	}
+
+	/* If the byte contains a 0, then we aren't allowed to unlock
+	 * the device */
+	if (read(persistent_fd, &oem_unlock_allowed, 1) == 1)
+		ret = oem_unlock_allowed != 0;
+
+out:
+	if (persistent_fd >= 0)
+		close(persistent_fd);
+	return ret;
+}
 
 static void update_device_state_metadata(void)
 {
@@ -442,8 +482,16 @@ static int set_device_state(enum device_state device_state,
 		headers = lock_headers;
 		break;
 	case UNLOCKED:
-		statevar = OEM_LOCK_UNLOCKED;
-		headers = unlock_headers;
+		/* Check the persistent data block to see if oem unlock
+		 *  is enabled. */
+		if (is_unlock_enabled()) {
+			statevar = OEM_LOCK_UNLOCKED;
+			headers = unlock_headers;
+		} else {
+			pr_error("Oem unlock is disabled in settings, can't unlock bootloader!");
+			fastboot_fail("Oem unlock is disabled in settings, can't unlock bootloader!");
+			return 0;
+		}
 		break;
 	case VERIFIED:
 		statevar = OEM_LOCK_VERIFIED;

@@ -20,7 +20,7 @@ extern struct selabel_handle *sehandle;
 extern pthread_mutex_t action_mutex;
 
 #define RECOVERY_FSTAB_LOCATION	"/system/etc/recovery.fstab"
-#define USERFASTBOOT_VERSION       "07.05"
+#define USERFASTBOOT_VERSION       "07.06"
 
 #define FASTBOOT_GUID \
 	EFI_GUID(0x1ac80a82, 0x4f0c, 0x456b, 0x9a99, 0xde, 0xbe, 0xb4, 0x31, 0xfc, 0xc1);

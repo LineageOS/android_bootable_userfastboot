@@ -902,8 +902,8 @@ out:
 
 static void cmd_boot(char *arg, int fd, void *data, unsigned sz)
 {
-	if (get_device_state() == LOCKED) {
-		fastboot_fail("bootloader must not be locked");
+	if (get_device_state() != UNLOCKED) {
+		fastboot_fail("bootloader must be unlocked");
 		return;
 	}
 

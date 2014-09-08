@@ -1047,6 +1047,7 @@ static size_t unescape_oemvar_val(char *val)
 			*out++ = *p++;
 		}
 	}
+	*out++ = '\0';
 	return out - val;
 }
 
@@ -1225,40 +1226,18 @@ static int set_efi_var(int argc, char **argv)
 {
 	int ret;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
-	size_t datalen;
-	uint16_t *data, *d_pos;
-	char *o_pos;
 
 	if (argc != 3) {
 		pr_error("incorrect number of parameters");
 		return -1;
 	}
 
-	if (strlen(argv[1]) > 128) {
-		pr_error("pathologically long variable name");
-		return -1;
-	}
-
-	/* up-convert the data to a 16-bit string as that is what EFI generally uses */
-	datalen = (strlen(argv[2]) + 1) * 2;
-	if (datalen > 256) { // value is arbitray but should be more than enough
-		pr_error("pathologically long data string");
-		return -1;
-	}
-	data = xmalloc(datalen);
-	d_pos = data;
-	o_pos = argv[2];
-	while (*o_pos)
-		*d_pos++ = *o_pos++;
-	*d_pos = 0;
-
 	pr_debug("Setting '%s' to value '%s'\n", argv[1], argv[2]);
 	ret = efi_set_variable(fastboot_guid, argv[1],
-			(uint8_t *)data, datalen,
+			(uint8_t *)argv[2], strlen(argv[2]) + 1,
 			EFI_VARIABLE_NON_VOLATILE |
 			EFI_VARIABLE_RUNTIME_ACCESS |
 			EFI_VARIABLE_BOOTSERVICE_ACCESS);
-	free(data);
 	if (ret)
 		pr_error("Couldn't set '%s' EFI variable to '%s'\n",
 				argv[1], argv[2]);

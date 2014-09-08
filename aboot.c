@@ -105,10 +105,13 @@
 /* EFI Variable to store user-supplied key store binary data */
 #define KEYSTORE_VAR		"KeyStore"
 
+#define OFF_MODE_CHARGE		"off-mode-charge"
+
 #define LOADER_GUID \
 	EFI_GUID(0x4a67b082, 0x0a4c, 0x41cf, 0xb6c7, 0x44, 0x0b, 0x29, 0xbb, 0x8c, 0x4f);
 
 #define LOADER_VERSION_VAR      "LoaderVersion"
+
 
 /* Initial list of flash targets that are allowed in VERIFIED state */
 static char *default_flash_whitelist[] = {
@@ -1245,6 +1248,34 @@ static int set_efi_var(int argc, char **argv)
 }
 
 
+static int oem_off_mode_charge(int argc, char **argv)
+{
+	int ret;
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+
+	if (argc != 2) {
+		pr_error("incorrect number of parameters");
+		return -1;
+	}
+
+	if (strcmp(argv[1], "1") && strcmp(argv[1], "0")) {
+		pr_error("Please specify 1 or 0 to enable/disable charge mode\n");
+		return -1;
+	}
+
+	ret = efi_set_variable(fastboot_guid, OFF_MODE_CHARGE,
+			(uint8_t *)argv[1], strlen(argv[1]) + 1,
+			EFI_VARIABLE_NON_VOLATILE |
+			EFI_VARIABLE_RUNTIME_ACCESS |
+			EFI_VARIABLE_BOOTSERVICE_ACCESS);
+	if (!ret)
+		fastboot_publish(OFF_MODE_CHARGE, xstrdup(argv[1]));
+
+	return ret;
+}
+
+
+
 static int oem_reboot_cmd(int argc, char **argv)
 {
 	if (argc != 2) {
@@ -1368,6 +1399,23 @@ static char *get_loader_version(void)
 }
 
 
+static char *get_off_mode_charge(void)
+{
+	char *data = NULL;
+	size_t dsize;
+	uint32_t attributes;
+	int ret;
+	efi_guid_t loader_guid = FASTBOOT_GUID;
+
+	ret = efi_get_variable(loader_guid, OFF_MODE_CHARGE, (uint8_t **)&data,
+			&dsize, &attributes);
+	if (ret || !data || !dsize)
+		return xstrdup("1");
+
+	return xstrdup(data);
+}
+
+
 void aboot_register_commands(void)
 {
 	char *bios_vendor, *bios_version, *bios_string;
@@ -1423,14 +1471,7 @@ void aboot_register_commands(void)
 	else
 		fastboot_publish("kernel", xstrdup("unknown"));
 
-
-	/* At this time we don't have a special 'charge mode',
-	 * which is entered when power is applied.
-	 * if later we do, we need to implement a
-	 * 'fastboot oem off-mode-charge 0' which bypasses
-	 * charge mode and boots the device normally as
-	 * if the user pressed the power button */
-	fastboot_publish("off-mode-charge", xstrdup("0"));
+	fastboot_publish(OFF_MODE_CHARGE, get_off_mode_charge());
 
 	fastboot_register("boot", cmd_boot);
 	fastboot_register("erase:", cmd_erase);
@@ -1449,6 +1490,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("reboot", oem_reboot_cmd, LOCKED);
 	aboot_register_oem_cmd("showtext", oem_showtext, LOCKED);
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
+	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, LOCKED);
 
 	register_userfastboot_plugins();
 

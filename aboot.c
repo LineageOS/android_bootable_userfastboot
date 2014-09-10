@@ -80,11 +80,8 @@
 #define CMD_HIDETEXT		"hidetext"
 
 #define CMD_LOCK		"lock"
-#define CMD_LOCK_NC		"lock-noconfirm"
 #define CMD_UNLOCK		"unlock"
-#define CMD_UNLOCK_NC		"unlock-noconfirm"
 #define CMD_VERIFIED		"verified"
-#define CMD_VERIFIED_NC		"verified-noconfirm"
 
 /* Current device state, set here, affects how bootloader functions */
 #define OEM_LOCK_VAR		"OEMLock"
@@ -106,6 +103,8 @@
 #define KEYSTORE_VAR		"KeyStore"
 
 #define OFF_MODE_CHARGE		"off-mode-charge"
+
+#define PROVISIONING_DONE_VAR	"ProvisioningDone"
 
 #define LOADER_GUID \
 	EFI_GUID(0x4a67b082, 0x0a4c, 0x41cf, 0xb6c7, 0x44, 0x0b, 0x29, 0xbb, 0x8c, 0x4f);
@@ -215,6 +214,29 @@ static const char *state_to_string(enum device_state ds)
 	/* silence warning, shouldn't get here */
 	die();
 	return NULL;
+}
+
+
+/* Returns true for eng/userdebug builds or if "oem provisioning-done" hasn't
+ * been run yet - used to relax some securitu policies, needed for development,
+ * device provisioning, and RMA */
+static bool is_provisioning_mode(void)
+{
+	char value[PROPERTY_VALUE_MAX];
+	uint8_t *data = NULL;
+	int ret;
+	uint32_t attributes;
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+	size_t dsize = 0;
+
+	ret = efi_get_variable(fastboot_guid, PROVISIONING_DONE_VAR, &data,
+			&dsize, &attributes);
+	if (ret || !data || !dsize)
+		return true;
+	free(data);
+
+	property_get("ro.debuggable", value, "0");
+        return (strcmp(value, "1") == 0);
 }
 
 
@@ -462,8 +484,7 @@ static void update_device_state_metadata(void)
 }
 
 
-static int set_device_state(enum device_state device_state,
-		bool skip_confirmation)
+static int set_device_state(enum device_state device_state)
 {
 	enum device_state current_state;
 	bool must_erase;
@@ -486,8 +507,8 @@ static int set_device_state(enum device_state device_state,
 		break;
 	case UNLOCKED:
 		/* Check the persistent data block to see if oem unlock
-		 *  is enabled. */
-		if (is_unlock_enabled()) {
+		 *  is enabled. We only check this outside of provisioning mode. */
+		if (is_provisioning_mode() || is_unlock_enabled()) {
 			statevar = OEM_LOCK_UNLOCKED;
 			headers = unlock_headers;
 		} else {
@@ -507,10 +528,10 @@ static int set_device_state(enum device_state device_state,
 		pr_error("invalid fstab\n");
 		return -1;
 	}
-	must_erase = is_valid_blkdev(vol->blk_device);
+	must_erase = is_valid_blkdev(vol->blk_device) && !is_provisioning_mode();
 
 	if (must_erase) {
-		if (!skip_confirmation && !confirm_device_state(headers))
+		if (!confirm_device_state(headers))
 			return -1;
 
 		pr_status("Userdata erase required, this can take a while...\n");
@@ -844,40 +865,19 @@ out:
 	hashmapFree(tgt.params);
 }
 
-static int parse_state_cmd(char *cmd, enum device_state *state, bool *confirm)
+static int parse_state_cmd(char *cmd, enum device_state *state)
 {
 	if (!strcmp(cmd, CMD_UNLOCK)) {
-		*confirm = true;
 		*state = UNLOCKED;
 		return 0;
 	}
 
 	if (!strcmp(cmd, CMD_LOCK)) {
-		*confirm = true;
 		*state = LOCKED;
 		return 0;
 	}
 
 	if (!strcmp(cmd, CMD_VERIFIED)) {
-		*confirm = true;
-		*state = VERIFIED;
-		return 0;
-	}
-
-	if (!strcmp(cmd, CMD_UNLOCK_NC)) {
-		*confirm = false;
-		*state = UNLOCKED;
-		return 0;
-	}
-
-	if (!strcmp(cmd, CMD_LOCK_NC)) {
-		*confirm = false;
-		*state = LOCKED;
-		return 0;
-	}
-
-	if (!strcmp(cmd, CMD_VERIFIED_NC)) {
-		*confirm = false;
 		*state = VERIFIED;
 		return 0;
 	}
@@ -892,7 +892,6 @@ static void cmd_oem(char *arg, int fd, void *data, unsigned sz)
 	char *argv[MAX_OEM_ARGS];
 	int argc = 0;
 	enum device_state device_state, new_state;
-	bool confirm;
 	struct cmd_struct *cs;
 	int ret;
 
@@ -914,8 +913,8 @@ static void cmd_oem(char *arg, int fd, void *data, unsigned sz)
 	}
 
 	/* Check if user sent one of various state transition commands */
-	if (!parse_state_cmd(argv[0], &new_state, &confirm)) {
-		if (set_device_state(new_state, !confirm))
+	if (!parse_state_cmd(argv[0], &new_state)) {
+		if (set_device_state(new_state))
 			fastboot_fail("couldn't change state");
 		else
 			fastboot_okay("");
@@ -1230,20 +1229,32 @@ static int set_efi_var(int argc, char **argv)
 	int ret;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 
-	if (argc != 3) {
+	if (argc < 2 || argc > 3) {
 		pr_error("incorrect number of parameters");
 		return -1;
 	}
 
-	pr_debug("Setting '%s' to value '%s'\n", argv[1], argv[2]);
-	ret = efi_set_variable(fastboot_guid, argv[1],
-			(uint8_t *)argv[2], strlen(argv[2]) + 1,
-			EFI_VARIABLE_NON_VOLATILE |
-			EFI_VARIABLE_RUNTIME_ACCESS |
-			EFI_VARIABLE_BOOTSERVICE_ACCESS);
-	if (ret)
-		pr_error("Couldn't set '%s' EFI variable to '%s'\n",
-				argv[1], argv[2]);
+	if (argc == 3) {
+		pr_debug("Setting '%s' to value '%s'\n", argv[1], argv[2]);
+		ret = efi_set_variable(fastboot_guid, argv[1],
+				(uint8_t *)argv[2], strlen(argv[2]) + 1,
+				EFI_VARIABLE_NON_VOLATILE |
+				EFI_VARIABLE_RUNTIME_ACCESS |
+				EFI_VARIABLE_BOOTSERVICE_ACCESS);
+		if (ret)
+			pr_error("Couldn't set '%s' EFI variable to '%s'\n",
+					argv[1], argv[2]);
+	} else {
+		pr_debug("Clearing '%s'\n", argv[1]);
+		ret = efi_set_variable(fastboot_guid, argv[1],
+				(uint8_t *)NULL, 0,
+				EFI_VARIABLE_NON_VOLATILE |
+				EFI_VARIABLE_RUNTIME_ACCESS |
+				EFI_VARIABLE_BOOTSERVICE_ACCESS);
+		if (ret)
+			pr_error("Couldn't clear '%s' EFI variable\n",
+					argv[1]);
+	}
 	return ret;
 }
 
@@ -1274,6 +1285,27 @@ static int oem_off_mode_charge(int argc, char **argv)
 	return ret;
 }
 
+
+static int oem_provisioning_done(int argc, char **argv)
+{
+	int ret;
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+
+	ret = efi_set_variable(fastboot_guid, PROVISIONING_DONE_VAR,
+			(uint8_t *)"1", 2,
+			EFI_VARIABLE_NON_VOLATILE |
+			EFI_VARIABLE_RUNTIME_ACCESS |
+			EFI_VARIABLE_BOOTSERVICE_ACCESS);
+
+	if (!ret) {
+		fastboot_publish("provisioning-mode", xstrdup("no"));
+		populate_status_info();
+	} else {
+		pr_error("couldn't clear provisioning mode");
+	}
+	return ret;
+
+}
 
 
 static int oem_reboot_cmd(int argc, char **argv)
@@ -1324,14 +1356,15 @@ void populate_status_info(void)
 	interface_info = get_network_interface_status();
 
 	infostring = xasprintf("Userfastboot for %s\n \n"
-		     "      bootloader: %s\n"
-		     "          kernel: %s\n"
-		     "        firmware: %s\n"
-		     "           board: %s\n"
-		     "        serialno: %s\n"
-		     "    device state: %s\n"
-		     "UEFI secure boot: %s\n"
-		     "      boot state: %s\n"
+		     "       bootloader: %s\n"
+		     "           kernel: %s\n"
+		     "         firmware: %s\n"
+		     "            board: %s\n"
+		     "         serialno: %s\n"
+		     "     device state: %s\n"
+		     " UEFI secure boot: %s\n"
+		     "       boot state: %s\n"
+		     "provisioning mode: %s\n"
 		     " \n%s",
 		     fastboot_getvar("product"),
 		     fastboot_getvar("version-bootloader"),
@@ -1342,6 +1375,7 @@ void populate_status_info(void)
 		     fastboot_getvar("device-state"),
 		     fastboot_getvar("secureboot"),
 		     fastboot_getvar("boot-state"),
+		     fastboot_getvar("provisioning-mode"),
 		     interface_info);
 	pr_debug("%s", infostring);
 	mui_infotext(infostring);
@@ -1448,6 +1482,7 @@ void aboot_register_commands(void)
 	fastboot_publish("secure", xstrdup("no"));
 
 	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled() ? "yes" : "no"));
+	fastboot_publish("provisioning-mode", xstrdup(is_provisioning_mode() ? "yes" : "no"));
 
 	bios_vendor = get_dmi_data("bios_vendor");
 	bios_version = get_dmi_data("bios_version");
@@ -1491,6 +1526,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("showtext", oem_showtext, LOCKED);
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
 	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, UNLOCKED);
+	aboot_register_oem_cmd("provisioning-done", oem_provisioning_done, LOCKED);
 
 	register_userfastboot_plugins();
 

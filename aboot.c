@@ -1490,7 +1490,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("reboot", oem_reboot_cmd, LOCKED);
 	aboot_register_oem_cmd("showtext", oem_showtext, LOCKED);
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
-	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, LOCKED);
+	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, UNLOCKED);
 
 	register_userfastboot_plugins();
 

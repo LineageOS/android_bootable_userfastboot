@@ -21,11 +21,6 @@ LOCAL_SRC_FILES := \
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wextra -Wno-unused-parameter -Wno-format-zero-length -Werror
 
-ifeq (true,$(TARGET_PREFER_32_BIT_EXECUTABLES))
-# We are doing a 32p build, force recovery to be 64bit
-LOCAL_MULTILIB := 64
-endif
-
 LOCAL_MODULE := userfastboot-$(TARGET_BUILD_VARIANT)
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_PATH := $(PRODUCT_OUT)/userfastboot
@@ -85,7 +80,7 @@ $(inc) : $(inc).list $(LOCAL_PATH)/Android.mk
 	$(hide) $(foreach lib,$(libs),echo "  $(lib)_init();" >> $@;)
 	$(hide) echo "}" >> $@
 
-$(call intermediates-dir-for,EXECUTABLES,userfastboot-$(TARGET_BUILD_VARIANT))/aboot.o : $(inc)
+$(call intermediates-dir-for,EXECUTABLES,userfastboot-$(TARGET_BUILD_VARIANT),,,$(TARGET_PREFER_32_BIT))/aboot.o : $(inc)
 LOCAL_C_INCLUDES += $(dir $(inc))
 
 ifneq ($(USERFASTBOOT_NO_GUI),true)

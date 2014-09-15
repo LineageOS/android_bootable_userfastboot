@@ -1147,12 +1147,6 @@ static void cmd_reboot_bl(char *arg, int fd, void *data, unsigned sz)
 }
 
 
-static int start_adbd(int argc, char **argv)
-{
-	return system("adbd &");
-}
-
-
 #define CHUNK	1024LL * 1024LL
 static int garbage_disk(int argc, char **argv)
 {
@@ -1536,7 +1530,6 @@ void aboot_register_commands(void)
 	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
 	aboot_register_flash_cmd("efirun", cmd_flash_efirun, UNLOCKED);
 
-	aboot_register_oem_cmd("adbd", start_adbd, UNLOCKED);
 	aboot_register_oem_cmd("garbage-disk", garbage_disk, UNLOCKED);
 	aboot_register_oem_cmd("setvar", set_efi_var, UNLOCKED);
 	aboot_register_oem_cmd("reboot", oem_reboot_cmd, LOCKED);

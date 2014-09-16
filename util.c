@@ -354,7 +354,8 @@ int named_file_write(const char *filename, const unsigned char *what,
 	return 0;
 }
 
-int mount_partition_device(const char *device, const char *type, char *mountpoint)
+int mount_partition_device(const char *device, const char *type,
+		char *mountpoint, bool readonly)
 {
 	int ret;
 
@@ -366,7 +367,7 @@ int mount_partition_device(const char *device, const char *type, char *mountpoin
 
 	pr_debug("Mounting %s (%s) --> %s\n", device,
 			type, mountpoint);
-	ret = mount(device, mountpoint, type, 0, "");
+	ret = mount(device, mountpoint, type, readonly ? MS_RDONLY : 0, "");
 	if (ret && errno != EBUSY) {
 		pr_debug("mount: %s (%s): %s\n", device, type, strerror(errno));
 		return -1;
@@ -499,7 +500,7 @@ int64_t get_disk_size(const char *disk_name)
 }
 
 
-int mount_partition(struct fstab_rec *vol)
+int mount_partition(struct fstab_rec *vol, bool readonly)
 {
 	char *mountpoint;
 	int status;
@@ -510,7 +511,7 @@ int mount_partition(struct fstab_rec *vol)
 	if (!strcmp(fs_type, "emmc"))
 		fs_type = "vfat";
 
-	status = mount_partition_device(vol->blk_device, fs_type, mountpoint);
+	status = mount_partition_device(vol->blk_device, fs_type, mountpoint, readonly);
 	free(mountpoint);
 
 	return status;
@@ -930,7 +931,7 @@ int copy_bootloader_file(char *filename, void *data, unsigned sz)
 		return -1;
 
 	}
-	if (mount_partition(vol_bootloader)) {
+	if (mount_partition(vol_bootloader, false)) {
 		pr_error("Couldn't mount bootloader partition!\n");
 		return -1;
 	}

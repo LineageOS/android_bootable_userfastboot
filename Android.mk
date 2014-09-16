@@ -15,7 +15,8 @@ LOCAL_SRC_FILES := \
 	ui.c \
 	sanity.c \
 	keystore.c \
-	asn1.c
+	asn1.c \
+	hashes.c
 
 LOCAL_CFLAGS := -DDEVICE_NAME=\"$(TARGET_BOOTLOADER_BOARD_NAME)\" \
 	-W -Wall -Wextra -Wno-unused-parameter -Wno-format-zero-length -Werror
@@ -32,7 +33,9 @@ LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
 LOCAL_STATIC_LIBRARIES := libc liblog libz libm libcutils \
 			  libsparse_static libminui libpng \
 			  libselinux libfs_mgr libstdc++ libiniparser \
-			  libgpt_static libefivar libcrypto_static
+			  libgpt_static libefivar libcrypto_static \
+			  libext4_utils_static
+
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 
 LOCAL_STATIC_LIBRARIES += $(TARGET_USERFASTBOOT_LIBS) $(TARGET_USERFASTBOOT_EXTRA_LIBS)
@@ -42,12 +45,12 @@ LOCAL_C_INCLUDES += external/libpng \
 		    external/openssl/include \
 		    bootable/userfastboot/microui \
 		    bootable/userfastboot/libgpt/include \
-		    bootable/iago/include \
 		    bootable/recovery \
 		    system/core/libsparse \
 		    system/core/mkbootimg \
 		    system/core/fs_mgr/include \
 		    system/core/libsparse/include \
+		    system/extras/ext4_utils
 
 # Each library in TARGET_USERFASTBOOT_LIBS should have a function
 # named "<libname>_init()".  Here we emit a little C function that

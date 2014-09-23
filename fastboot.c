@@ -590,7 +590,7 @@ static int open_tcp(void)
 		return -1;
 	}
 
-	memset(&serv_addr, sizeof(serv_addr), 0);
+	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	serv_addr.sin_port = htons(portno);
@@ -740,7 +740,7 @@ int fastboot_handler(void)
 
 	struct pollfd fds[nfds];
 
-	memset(&fds, sizeof fds, 0);
+	memset(&fds, 0, sizeof(fds));
 
 	fds[usb_fd_idx].fd = -1;
 	fds[tcp_fd_idx].fd = -1;

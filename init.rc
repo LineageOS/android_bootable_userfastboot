@@ -2,8 +2,12 @@ import /init.userfastboot.rc
 import /init.recovery.${ro.hardware}.rc
 
 on early-init
-    setenforce 0
     loglevel 7
+
+    # Set the security context for the init process.
+    # This should occur before anything else (e.g. ueventd) is started.
+    setcon u:r:init:s0
+
     start ueventd
 
 on init
@@ -46,20 +50,25 @@ on boot
 
 service ueventd /sbin/ueventd
     critical
+    seclabel u:r:ueventd:s0
 
 service userfastboot /sbin/userfastboot
     oneshot
+    seclabel u:r:userfastboot:s0
 
 service console /system/bin/sh
-    class core
+    oneshot
     console
     disabled
     user shell
     group log
+    seclabel u:r:shell:s0
 
 on property:ro.debuggable=1
     start console
 
-service pstore-clean /system/bin/pstore-clean
-    oneshot
+# not present in userfastboot image
+#service pstore-clean /system/bin/pstore-clean
+#    oneshot
+#    seclabel u:r:pstore-clean:s0
 

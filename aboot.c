@@ -1012,6 +1012,20 @@ static int cmd_flash_sfu(Hashmap *params, int fd, void *data, unsigned sz)
 	return 0;
 }
 
+
+static int cmd_flash_ifwi(Hashmap *params, int fd, void *data, unsigned sz)
+{
+	pr_status("Preparing IFWI binary");
+	if (copy_bootloader_file("ifwi.bin", data, sz)) {
+		pr_error("couldn't stage IFWI image");
+		return -1;
+	}
+
+	fastboot_info("IFWI blob will be applied on next reboot");
+	return 0;
+}
+
+
 static bool parse_oemvar_guid_line(char *line, efi_guid_t *g)
 {
 	unsigned int a, b, c, d, e[6];
@@ -1525,7 +1539,8 @@ void aboot_register_commands(void)
 
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt, UNLOCKED);
 	aboot_register_flash_cmd("mbr", cmd_flash_mbr, UNLOCKED);
-	aboot_register_flash_cmd("sfu", cmd_flash_sfu, VERIFIED);
+	aboot_register_flash_cmd("sfu", cmd_flash_sfu, UNLOCKED);
+	aboot_register_flash_cmd("ifwi", cmd_flash_ifwi, UNLOCKED);
 	aboot_register_flash_cmd("oemvars", cmd_flash_oemvars, UNLOCKED);
 	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
 	aboot_register_flash_cmd("efirun", cmd_flash_efirun, UNLOCKED);

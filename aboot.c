@@ -225,9 +225,9 @@ static const char *state_to_string(enum device_state ds)
 }
 
 
-/* Returns true for eng/userdebug builds or if "oem provisioning-done" hasn't
- * been run yet - used to relax some securitu policies, needed for development,
- * device provisioning, and RMA */
+/* If the device is booted with OEM_LOCK_VAR unset, that means it is a pristine
+ * device ready to be provisioned with software. Once the devide state is set and
+ * the device is rebooted, it is no longer in this state. */
 static bool is_provisioning_mode(void)
 {
 	uint8_t *data = NULL;
@@ -235,13 +235,25 @@ static bool is_provisioning_mode(void)
 	uint32_t attributes;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 	size_t dsize = 0;
+	static int provisioning_state;
 
-	ret = efi_get_variable(fastboot_guid, PROVISIONING_DONE_VAR, &data,
-			&dsize, &attributes);
-	if (ret || !data || !dsize)
-		return true;
-	free(data);
-	return false
+	if (!provisioning_state) {
+		ret = efi_get_variable(fastboot_guid, OEM_LOCK_VAR, (uint8_t **)&data,
+				       &dsize, &attributes);
+		if (ret || !dsize) {
+			/* If the variable does not exist, assume this is an
+			 * unlocked, non-provisioned device. We will be in
+			 * 'provisioning mode' until the a device state is set
+			 * and we reboot */
+			provisioning_state = 1;
+			return true;
+		}
+		free(data);
+		provisioning_state = -1;
+		return false;
+	} else {
+		return provisioning_state == 1;
+	}
 }
 
 
@@ -1424,28 +1436,6 @@ static int oem_off_mode_charge(int argc, char **argv)
 }
 
 
-static int oem_provisioning_done(int argc, char **argv)
-{
-	int ret;
-	efi_guid_t fastboot_guid = FASTBOOT_GUID;
-
-	ret = efi_set_variable(fastboot_guid, PROVISIONING_DONE_VAR,
-			(uint8_t *)"1", 2,
-			EFI_VARIABLE_NON_VOLATILE |
-			EFI_VARIABLE_RUNTIME_ACCESS |
-			EFI_VARIABLE_BOOTSERVICE_ACCESS);
-
-	if (!ret) {
-		fastboot_publish("provisioning-mode", xstrdup("no"));
-		populate_status_info();
-	} else {
-		pr_error("couldn't clear provisioning mode");
-	}
-	return ret;
-
-}
-
-
 static int oem_reboot_cmd(int argc, char **argv)
 {
 	if (argc != 2) {
@@ -1609,6 +1599,9 @@ void aboot_register_commands(void)
 	char *bios_vendor, *bios_version, *bios_string;
 	char *board_vendor, *board_version, *board_name, *board_string;
 	struct utsname uts;
+	bool provisioning;
+
+	provisioning = is_provisioning_mode();
 
 	fastboot_register("oem", cmd_oem);
 	fastboot_register("reboot", cmd_reboot);
@@ -1636,7 +1629,7 @@ void aboot_register_commands(void)
 	fastboot_publish("secure", xstrdup("no"));
 
 	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled() ? "yes" : "no"));
-	fastboot_publish("provisioning-mode", xstrdup(is_provisioning_mode() ? "yes" : "no"));
+	fastboot_publish("provisioning-mode", xstrdup(provisioning ? "yes" : "no"));
 
 	bios_vendor = get_dmi_data("bios_vendor");
 	bios_version = get_dmi_data("bios_version");
@@ -1680,7 +1673,6 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("showtext", oem_showtext, LOCKED);
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
 	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, UNLOCKED);
-	aboot_register_oem_cmd("provisioning-done", oem_provisioning_done, LOCKED);
 	aboot_register_oem_cmd("get-hashes", oem_get_hashes, LOCKED);
 
 	register_userfastboot_plugins();

@@ -1233,9 +1233,14 @@ out:
 	return ret;
 }
 
+
 static int set_efi_var(int argc, char **argv)
 {
-	int ret;
+	int ret = 0;
+	int readEFI = 0;
+	uint8_t *data = NULL;
+	size_t data_size;
+	uint32_t attributes;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 
 	if (argc < 2 || argc > 3) {
@@ -1255,14 +1260,18 @@ static int set_efi_var(int argc, char **argv)
 					argv[1], argv[2]);
 	} else {
 		pr_debug("Clearing '%s'\n", argv[1]);
-		ret = efi_set_variable(fastboot_guid, argv[1],
+        /* If variable is already cleared, this call will return 'false' */
+		readEFI = efi_get_variable(fastboot_guid, argv[1], &data, &data_size, &attributes);
+		if (!readEFI){
+			ret = efi_set_variable(fastboot_guid, argv[1],
 				(uint8_t *)NULL, 0,
 				EFI_VARIABLE_NON_VOLATILE |
 				EFI_VARIABLE_RUNTIME_ACCESS |
 				EFI_VARIABLE_BOOTSERVICE_ACCESS);
-		if (ret)
-			pr_error("Couldn't clear '%s' EFI variable\n",
+				if (ret)
+					pr_error("Couldn't clear '%s' EFI variable\n",
 					argv[1]);
+		}
 	}
 	return ret;
 }

@@ -99,6 +99,7 @@
 #define EFI_GLOBAL_VARIABLE \
 	EFI_GUID(0x8BE4DF61, 0x93CA, 0x11d2, 0xAA0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C);
 #define SECURE_BOOT_VAR		"SecureBoot"
+#define SETUP_MODE_VAR		"SetupMode"
 
 /* EFI Variable to store user-supplied key store binary data */
 #define KEYSTORE_VAR		"KeyStore"
@@ -334,42 +335,53 @@ static void fetch_boot_state(void)
 }
 
 
+static int efi_get_variable_byte(efi_guid_t guid, char *varname, char *value)
+{
+	int ret;
+	char *data = NULL;
+	size_t dsize;
+	uint32_t attributes;
+
+	ret = efi_get_variable(guid, varname, (uint8_t **)&data,
+			       &dsize, &attributes);
+	if (ret || !dsize) {
+		pr_debug("Failed to read byte variable %s\n", varname);
+		ret = -1;
+		goto out;
+	}
+
+	*value = data[0];
+
+out:
+	free(data);
+	return ret;
+}
+
+
 static bool is_secure_boot_enabled(void)
 {
 	int ret;
-	uint32_t attributes;
-	char *data = NULL;
-	size_t dsize;
+	char value;
 	efi_guid_t global_guid = EFI_GLOBAL_VARIABLE;
-	bool secure;
 
-	if (!efi_variables_supported()) {
-		secure = false;
-		goto out;
-	}
+	if (!efi_variables_supported())
+		return false;
 
-	ret = efi_get_variable(global_guid, SECURE_BOOT_VAR, (uint8_t **)&data,
-			&dsize, &attributes);
-	if (ret) {
-		pr_debug("Couldn't read SecureBoot\n");
-		secure = false;
-		goto out;
-	}
+	ret = efi_get_variable_byte(global_guid, SETUP_MODE_VAR, &value);
+	if (ret)
+		return false;
 
-	if (!dsize) {
-		secure = false;
-		goto out;
-	}
+	if (value != 0)
+		return false;
 
-	if (data[0] == 1) {
-		secure = true;
-		goto out;
-	}
+	ret = efi_get_variable_byte(global_guid, SECURE_BOOT_VAR, &value);
+	if (ret)
+		return false;
 
-	secure = false;
-out:
-	free(data);
-	return secure;
+	if (value != 1)
+		return false;
+
+	return true;
 }
 
 

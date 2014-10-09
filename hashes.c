@@ -39,6 +39,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <ftw.h>
+#include <inttypes.h>
 
 #include <bootimg.h>
 #include <ext4_utils.h>
@@ -114,7 +115,7 @@ static int hash_fd(int fd, uint64_t len, unsigned char *hash)
 		len -= chunklen;
 	}
 	if (len) {
-		pr_error("short read? remaining %llu\n", len);
+		pr_error("short read? remaining %"PRIu64"\n", len);
                 goto out;
         }
 
@@ -314,7 +315,7 @@ uint64_t verity_tree_size(uint64_t data_size)
 	} while (level_blocks > 1);
 
 	tree_size = verity_blocks * block_size;
-	pr_debug("verity tree size %llu\n", tree_size);
+	pr_debug("verity tree size %"PRIu64"\n", tree_size);
 	return tree_size;
 }
 
@@ -372,7 +373,7 @@ int get_ext_image_hash(const char *ptn)
 
 	len += verity_tree_size(len) + VERITY_METADATA_SIZE;
 
-	pr_debug("%s filesystem size %lld\n", ptn, len);
+	pr_debug("%s filesystem size %"PRIu64"\n", ptn, len);
 	if (hash_fd(fd, len, hash))
 		goto out;
 

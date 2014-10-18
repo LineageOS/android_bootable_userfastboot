@@ -99,6 +99,7 @@
 #define EFI_GLOBAL_VARIABLE \
 	EFI_GUID(0x8BE4DF61, 0x93CA, 0x11d2, 0xAA0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C);
 #define SECURE_BOOT_VAR		"SecureBoot"
+#define SETUP_MODE_VAR		"SetupMode"
 
 /* EFI Variable to store user-supplied key store binary data */
 #define KEYSTORE_VAR		"KeyStore"
@@ -142,6 +143,12 @@ static char *default_erase_whitelist[] = {
 	"vendor",
 	"oem",
 	NULL
+};
+
+enum vartype {
+	VAR_TYPE_UNKNOWN,
+	VAR_TYPE_STRING,
+	VAR_TYPE_BLOB
 };
 
 struct flash_target {
@@ -334,42 +341,53 @@ static void fetch_boot_state(void)
 }
 
 
+static int efi_get_variable_byte(efi_guid_t guid, char *varname, char *value)
+{
+	int ret;
+	char *data = NULL;
+	size_t dsize;
+	uint32_t attributes;
+
+	ret = efi_get_variable(guid, varname, (uint8_t **)&data,
+			       &dsize, &attributes);
+	if (ret || !dsize) {
+		pr_debug("Failed to read byte variable %s\n", varname);
+		ret = -1;
+		goto out;
+	}
+
+	*value = data[0];
+
+out:
+	free(data);
+	return ret;
+}
+
+
 static bool is_secure_boot_enabled(void)
 {
 	int ret;
-	uint32_t attributes;
-	char *data = NULL;
-	size_t dsize;
+	char value;
 	efi_guid_t global_guid = EFI_GLOBAL_VARIABLE;
-	bool secure;
 
-	if (!efi_variables_supported()) {
-		secure = false;
-		goto out;
-	}
+	if (!efi_variables_supported())
+		return false;
 
-	ret = efi_get_variable(global_guid, SECURE_BOOT_VAR, (uint8_t **)&data,
-			&dsize, &attributes);
-	if (ret) {
-		pr_debug("Couldn't read SecureBoot\n");
-		secure = false;
-		goto out;
-	}
+	ret = efi_get_variable_byte(global_guid, SETUP_MODE_VAR, &value);
+	if (ret)
+		return false;
 
-	if (!dsize) {
-		secure = false;
-		goto out;
-	}
+	if (value != 0)
+		return false;
 
-	if (data[0] == 1) {
-		secure = true;
-		goto out;
-	}
+	ret = efi_get_variable_byte(global_guid, SECURE_BOOT_VAR, &value);
+	if (ret)
+		return false;
 
-	secure = false;
-out:
-	free(data);
-	return secure;
+	if (value != 1)
+		return false;
+
+	return true;
 }
 
 
@@ -1038,6 +1056,8 @@ static bool parse_oemvar_guid_line(char *line, efi_guid_t *g)
 		g->e[0] = e[0]; g->e[1] = e[1];
 		g->e[2] = e[2]; g->e[3] = e[3];
 		g->e[4] = e[4]; g->e[5] = e[5];
+		pr_debug("switch oemvar GUID to %08x-%04x-%04x-%04x-%02x%02x%02x%02x%02x%02x\n",
+			a, b, c, d, e[0], e[1], e[2], e[3], e[4], e[5]);
 		return true;
 	}
 	return false;
@@ -1068,26 +1088,97 @@ static size_t unescape_oemvar_val(char *val)
 	return out - val;
 }
 
+static int parse_oemvar_attributes(char **linep, uint32_t *attributesp, enum vartype *typep)
+{
+	char *line = *linep;
+	char *pos, *end;
+	/* No point in writing volatile values. Default to both boot and runtime
+	 * access, can remove runtime access with 'b' flag */
+	uint32_t attributes = EFI_VARIABLE_NON_VOLATILE |
+		EFI_VARIABLE_BOOTSERVICE_ACCESS |
+		EFI_VARIABLE_RUNTIME_ACCESS;
+	enum vartype type = VAR_TYPE_UNKNOWN;
+
+	/* skip leading whitespace */
+	while (*line && isspace(*line))
+		line++;
+
+	/* Defaults if no attrs set */
+	if (*line != '[')
+		goto out;
+
+	line++;
+	pos = line;
+	end = strchr(line, ']');
+	if (!end) {
+		pr_error("Unclosed attributes specification\n");
+		return -1;
+	}
+	*end = '\0';
+	line = end + 1;
+
+	pr_debug("found attributes [%s]\n", pos);
+
+	while (*pos) {
+		switch (*pos) {
+		case 'd':
+			pr_debug("raw data type selected\n");
+			if (type != VAR_TYPE_UNKNOWN) {
+				pr_error("multiple oem var types specified\n");
+				return -1;
+			}
+			type = VAR_TYPE_BLOB;
+			break;
+		case 'b':
+			pr_debug("restrict to boot services access\n");
+			attributes &= ~EFI_VARIABLE_RUNTIME_ACCESS;
+			break;
+		case 'a':
+			pr_debug("time based authenticated variable\n");
+			attributes |= EFI_VARIABLE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS;
+			break;
+		default:
+			pr_error("Unknown attribute code '%c'", *pos);
+			return -1;
+		}
+		pos++;
+	}
+
+out:
+	if (type == VAR_TYPE_UNKNOWN)
+		type = VAR_TYPE_STRING;
+
+	*typep = type;
+	*linep = line;
+	*attributesp = attributes;
+
+	return 0;
+}
+
+
 static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 {
-	int ret = -1;
+        int ret = -1;
 	char *buf, *line, *eol, *var, *val, *p;
 	size_t vallen;
 	efi_guid_t curr_guid = FASTBOOT_GUID;
+	int lineno = 0;
 
 	pr_info("Parsing and setting values from oemvars file\n");
 
 	/* extra byte so we can always terminate the last line */
 	buf = malloc(sz+1);
 	if (!buf)
-		return ret;
-	if (robust_read(fd, buf, sz, false) != (ssize_t)sz) {
-		free(buf);
-		return ret;
-	}
+		return -1;
+	memcpy(buf, data, sz);
 	buf[sz] = 0;
 
 	for (line = buf; line - buf < (ssize_t)sz; line = eol+1) {
+		uint32_t attributes;
+		enum vartype type;
+
+		lineno++;
+
 		/* Detect line and terminate */
 		eol = strchr(line, '\n');
 		if (!eol)
@@ -1107,6 +1198,11 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 		if (parse_oemvar_guid_line(line, &curr_guid))
 			continue;
 
+		if (parse_oemvar_attributes(&line, &attributes, &type)) {
+			pr_error("Invalid attribute specification\n");
+			goto out;
+		}
+
 		/* Variable definition? */
 		while (*line && isspace(*line)) line++;
 		var = line;
@@ -1118,17 +1214,29 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 			val = line;
 		}
 		if (*var && val && *val) {
-			vallen = unescape_oemvar_val(val);
+			switch (type) {
+			case VAR_TYPE_BLOB:
+				vallen = unescape_oemvar_val(val) - 1;
+				break;
+			case VAR_TYPE_STRING:
+				vallen = unescape_oemvar_val(val);
+				break;
+			default:
+				goto out;
+			}
 			pr_info("Setting oemvar: %s\n", var);
-			ret = efi_set_variable(curr_guid, var,
-					       (uint8_t *)val, vallen,
-					       EFI_VARIABLE_NON_VOLATILE |
-					       EFI_VARIABLE_RUNTIME_ACCESS |
-					       EFI_VARIABLE_BOOTSERVICE_ACCESS);
+			if (efi_set_variable(curr_guid, var, (uint8_t *)val,
+						vallen, attributes)) {
+				pr_error("EFI variable setting failed\n");
+				goto out;
+			}
 		}
 	}
-
+	ret = 0;
+out:
 	free(buf);
+	if (ret)
+		pr_error("Failed at line %d\n", lineno);
 	return ret;
 }
 

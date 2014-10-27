@@ -1161,7 +1161,7 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
         int ret = -1;
 	char *buf, *line, *eol, *var, *val, *p;
 	size_t vallen;
-	efi_guid_t curr_guid = FASTBOOT_GUID;
+	efi_guid_t curr_guid = LOADER_GUID;
 	int lineno = 0;
 
 	pr_info("Parsing and setting values from oemvars file\n");
@@ -1349,7 +1349,7 @@ static int set_efi_var(int argc, char **argv)
 	uint8_t *data = NULL;
 	size_t data_size;
 	uint32_t attributes;
-	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+	efi_guid_t loader_guid = LOADER_GUID;
 
 	if (argc < 2 || argc > 3) {
 		pr_error("incorrect number of parameters");
@@ -1358,7 +1358,7 @@ static int set_efi_var(int argc, char **argv)
 
 	if (argc == 3) {
 		pr_debug("Setting '%s' to value '%s'\n", argv[1], argv[2]);
-		ret = efi_set_variable(fastboot_guid, argv[1],
+		ret = efi_set_variable(loader_guid, argv[1],
 				(uint8_t *)argv[2], strlen(argv[2]) + 1,
 				EFI_VARIABLE_NON_VOLATILE |
 				EFI_VARIABLE_RUNTIME_ACCESS |
@@ -1369,9 +1369,9 @@ static int set_efi_var(int argc, char **argv)
 	} else {
 		pr_debug("Clearing '%s'\n", argv[1]);
         /* If variable is already cleared, this call will return 'false' */
-		readEFI = efi_get_variable(fastboot_guid, argv[1], &data, &data_size, &attributes);
+		readEFI = efi_get_variable(loader_guid, argv[1], &data, &data_size, &attributes);
 		if (!readEFI){
-			ret = efi_set_variable(fastboot_guid, argv[1],
+			ret = efi_set_variable(loader_guid, argv[1],
 				(uint8_t *)NULL, 0,
 				EFI_VARIABLE_NON_VOLATILE |
 				EFI_VARIABLE_RUNTIME_ACCESS |

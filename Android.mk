@@ -26,7 +26,7 @@ ifeq (true,$(TARGET_PREFER_32_BIT_EXECUTABLES))
 LOCAL_MULTILIB := 64
 endif
 
-LOCAL_MODULE := userfastboot
+LOCAL_MODULE := userfastboot-$(TARGET_BUILD_VARIANT)
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_PATH := $(PRODUCT_OUT)/userfastboot
 LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/userfastboot/debug
@@ -35,6 +35,7 @@ LOCAL_STATIC_LIBRARIES := libc liblog libz libm libcutils \
 			  libselinux libfs_mgr libstdc++ libiniparser \
 			  libgpt_static libefivar libcrypto_static \
 			  libext4_utils_static
+LOCAL_MODULE_STEM := userfastboot
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 
@@ -84,13 +85,18 @@ $(inc) : $(inc).list $(LOCAL_PATH)/Android.mk
 	$(hide) $(foreach lib,$(libs),echo "  $(lib)_init();" >> $@;)
 	$(hide) echo "}" >> $@
 
-$(call intermediates-dir-for,EXECUTABLES,userfastboot)/aboot.o : $(inc)
+$(call intermediates-dir-for,EXECUTABLES,userfastboot-$(TARGET_BUILD_VARIANT))/aboot.o : $(inc)
 LOCAL_C_INCLUDES += $(dir $(inc))
 
 ifneq ($(USERFASTBOOT_NO_GUI),true)
-LOCAL_CFLAGS += -DUSE_GUI
+    LOCAL_CFLAGS += -DUSE_GUI
 endif
-
+ifeq ($(TARGET_BUILD_VARIANT),user)
+    LOCAL_CFLAGS += -DUSER -DUSERDEBUG
+endif
+ifeq ($(TARGET_BUILD_VARIANT),userdebug)
+    LOCAL_CFLAGS += -DUSERDEBUG
+endif
 include $(BUILD_EXECUTABLE)
 
 endif # TARGET_USE_USERFASTBOOT

@@ -230,7 +230,6 @@ static const char *state_to_string(enum device_state ds)
  * device provisioning, and RMA */
 static bool is_provisioning_mode(void)
 {
-	char value[PROPERTY_VALUE_MAX];
 	uint8_t *data = NULL;
 	int ret;
 	uint32_t attributes;
@@ -242,9 +241,7 @@ static bool is_provisioning_mode(void)
 	if (ret || !data || !dsize)
 		return true;
 	free(data);
-
-	property_get("ro.debuggable", value, "0");
-        return (strcmp(value, "1") == 0);
+	return false
 }
 
 
@@ -480,6 +477,13 @@ static int is_unlock_enabled(void)
 out:
 	if (persistent_fd >= 0)
 		close(persistent_fd);
+#ifndef USER
+	if (!ret) {
+		fastboot_info("Unlock protection is set");
+		fastboot_info("Unlocking device anyway, not a user build");
+		ret = 1;
+	}
+#endif
 	return ret;
 }
 
@@ -550,8 +554,13 @@ static int set_device_state(enum device_state device_state)
 	must_erase = is_valid_blkdev(vol->blk_device) && !is_provisioning_mode();
 
 	if (must_erase) {
+#ifdef USERDEBUG
+#ifdef USER
 		if (!confirm_device_state(headers))
 			return -1;
+#else
+		fastboot_info("Userdebug build, skipping confirmation");
+#endif
 
 		pr_status("Userdata erase required, this can take a while...\n");
 		fastboot_info("Userdata erase required, this can take a while...\n");
@@ -560,6 +569,9 @@ static int set_device_state(enum device_state device_state)
 			pr_error("couldn't erase data partition\n");
 			return -1;
 		}
+#else
+		fastboot_info("Eng build, skipping confirmation & data wipe");
+#endif
 	}
 
 	ret = efi_set_variable(fastboot_guid, OEM_LOCK_VAR,

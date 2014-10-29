@@ -1219,8 +1219,16 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 			*(--p) = 0;
 
 		/* GUID line syntax */
-		if (parse_oemvar_guid_line(line, &curr_guid))
+		if (parse_oemvar_guid_line(line, &curr_guid)) {
+			efi_guid_t fastboot_guid = FASTBOOT_GUID;
+			if (!memcmp(&curr_guid, &fastboot_guid, sizeof(fastboot_guid))) {
+				/* This will still not stop a determined user since
+				 * these variables have runtime access */
+				pr_error("Fastboot GUID is reserved");
+				goto out;
+			}
 			continue;
+		}
 
 		if (parse_oemvar_attributes(&line, &attributes, &type)) {
 			pr_error("Invalid attribute specification\n");
@@ -1483,6 +1491,23 @@ static int oem_get_hashes(int argc, char **argv)
 }
 
 
+#ifndef USER
+static int oem_clear_lock(int argc, char **argv)
+{
+	efi_guid_t fastboot_guid = FASTBOOT_GUID;
+
+	if (efi_set_variable(fastboot_guid, OEM_LOCK_VAR, 0, 0, 0) < 0) {
+		fastboot_fail("couldn't reset provisioning state");
+		return -1;
+	}
+	fastboot_okay("");
+	close_iofds();
+	android_reboot(ANDROID_RB_RESTART2, 0, "dnx");
+	return -1;
+}
+#endif
+
+
 static void publish_from_prop(char *key, char *prop, char *dfl)
 {
 	char val[PROPERTY_VALUE_MAX];
@@ -1674,7 +1699,9 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
 	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, UNLOCKED);
 	aboot_register_oem_cmd("get-hashes", oem_get_hashes, LOCKED);
-
+#ifndef USER
+	aboot_register_oem_cmd("reprovision", oem_clear_lock, LOCKED);
+#endif
 	register_userfastboot_plugins();
 
 	fetch_boot_state();

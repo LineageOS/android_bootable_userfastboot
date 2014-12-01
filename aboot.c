@@ -105,6 +105,7 @@
 #define KEYSTORE_VAR		"KeyStore"
 
 #define OFF_MODE_CHARGE		"off-mode-charge"
+#define AUDIO_DEBUG_VAR		"AudioDebug"
 
 #define PROVISIONING_DONE_VAR	"ProvisioningDone"
 
@@ -1417,8 +1418,9 @@ static int set_efi_var(int argc, char **argv)
 }
 
 
-static int oem_off_mode_charge(int argc, char **argv)
+static int set_fastboot_toggle_value(int argc, char **argv, char *var)
 {
+
 	int ret;
 	efi_guid_t fastboot_guid = FASTBOOT_GUID;
 
@@ -1428,19 +1430,34 @@ static int oem_off_mode_charge(int argc, char **argv)
 	}
 
 	if (strcmp(argv[1], "1") && strcmp(argv[1], "0")) {
-		pr_error("Please specify 1 or 0 to enable/disable charge mode\n");
+		pr_error("Please specify 1 or 0 to enable/disable %s\n", var);
 		return -1;
 	}
 
-	ret = efi_set_variable(fastboot_guid, OFF_MODE_CHARGE,
+	return efi_set_variable(fastboot_guid, var,
 			(uint8_t *)argv[1], strlen(argv[1]) + 1,
 			EFI_VARIABLE_NON_VOLATILE |
 			EFI_VARIABLE_RUNTIME_ACCESS |
 			EFI_VARIABLE_BOOTSERVICE_ACCESS);
+}
+
+
+static int oem_off_mode_charge(int argc, char **argv)
+{
+	int ret;
+
+	ret = set_fastboot_toggle_value(argc, argv, OFF_MODE_CHARGE);
+
 	if (!ret)
 		fastboot_publish(OFF_MODE_CHARGE, xstrdup(argv[1]));
 
 	return ret;
+}
+
+
+static int oem_audio_debug(int argc, char **argv)
+{
+	return set_fastboot_toggle_value(argc, argv, AUDIO_DEBUG_VAR);
 }
 
 
@@ -1699,6 +1716,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("hidetext", oem_hidetext, LOCKED);
 	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, UNLOCKED);
 	aboot_register_oem_cmd("get-hashes", oem_get_hashes, LOCKED);
+	aboot_register_oem_cmd("audiodebug", oem_audio_debug, UNLOCKED);
 #ifndef USER
 	aboot_register_oem_cmd("reprovision", oem_clear_lock, LOCKED);
 #endif

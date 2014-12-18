@@ -19,6 +19,7 @@ ufb_modules := \
 	libselinux \
 	libusbhost \
 	linker \
+	libpcre \
 	linker64 \
 	mksh \
 	systembinsh \

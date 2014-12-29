@@ -373,31 +373,37 @@ out:
 	return ret;
 }
 
+#define SB_DISABLED		"disabled"
+#define SB_ENABLED		"enabled"
+#define SB_SETUPMODE		"setup"
+#define SB_UNKNOWN		"unknown"
 
-static bool is_secure_boot_enabled(void)
+static char *is_secure_boot_enabled(void)
 {
 	int ret;
 	char value;
 	efi_guid_t global_guid = EFI_GLOBAL_VARIABLE;
 
 	if (!efi_variables_supported())
-		return false;
+		return SB_DISABLED;
 
 	ret = efi_get_variable_byte(global_guid, SETUP_MODE_VAR, &value);
 	if (ret)
-		return false;
+		return SB_UNKNOWN;
+	pr_debug("setup mode: %c\n", value);
 
 	if (value != 0)
-		return false;
+		return SB_SETUPMODE;
 
 	ret = efi_get_variable_byte(global_guid, SECURE_BOOT_VAR, &value);
 	if (ret)
-		return false;
+		return SB_UNKNOWN;
+	pr_debug("secure boot: %c\n", value);
 
 	if (value != 1)
-		return false;
+		return SB_DISABLED;
 
-	return true;
+	return SB_ENABLED;
 }
 
 
@@ -1267,6 +1273,8 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 	}
 	ret = 0;
 out:
+	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled()));
+	populate_status_info();
 	free(buf);
 	if (ret)
 		pr_error("Failed at line %d\n", lineno);
@@ -1670,7 +1678,7 @@ void aboot_register_commands(void)
 	 * XXX need to reconcile this with Verifiedbootflow.pdf */
 	fastboot_publish("secure", xstrdup("no"));
 
-	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled() ? "yes" : "no"));
+	fastboot_publish("secureboot", xstrdup(is_secure_boot_enabled()));
 	fastboot_publish("provisioning-mode", xstrdup(provisioning ? "yes" : "no"));
 
 	bios_vendor = get_dmi_data("bios_vendor");

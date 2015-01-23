@@ -141,7 +141,7 @@ static int generate_uuid(struct guid *uuid)
 	size_t to_read;
 	fd = open("/dev/urandom", O_RDONLY);
 	to_read = sizeof(*uuid);
-	if (!fd) {
+	if (fd < 0) {
 		pr_perror("open");
 		return -1;
 	}
@@ -246,12 +246,13 @@ int gpt_sync_ptable(const char *device)
 	int fd;
 	sync();
 	fd = open(device, O_RDWR);
-	if (!fd) {
+	if (fd < 0) {
 		pr_perror("open");
 		return -errno;
 	}
 	if (ioctl(fd, BLKRRPART, NULL)) {
 		pr_perror("BLKRRPART");
+		close(fd);
 		return -errno;
 	}
 	close(fd);
@@ -594,7 +595,7 @@ static int write_gpt_to_disk(struct gpt *gpt)
 	gpt->header.crc32 = get_header_crc32(gpt);
 
 	fd = open(gpt->device, O_WRONLY);
-	if (!fd) {
+	if (fd < 0) {
 		pr_perror("open");
 		return -1;
 	}
@@ -636,7 +637,7 @@ static int write_mbr(const char *device, struct mbr *mbr)
 	int fd;
 
 	fd = open(device, O_WRONLY);
-	if (!fd) {
+	if (fd < 0) {
 		pr_perror("open");
 		return -1;
 	}
@@ -797,7 +798,7 @@ int gpt_read(struct gpt *gpt)
 	int ret;
 
 	fd = open(gpt->device, O_RDONLY);
-	if (!fd) {
+	if (fd < 0) {
 		pr_perror("open");
 		return -EIO;
 	}
@@ -888,6 +889,7 @@ char *gpt_dump_pentries(struct gpt *gpt)
 		}
 		ret = asprintf(&buf, "%s%s", old_buf, line);
 		free(old_buf);
+		free(line);
 		if (ret < 0)
 			return NULL;
 	}
@@ -931,6 +933,7 @@ char *gpt_dump_header(struct gpt *gpt)
 		hdr->first_usable_lba, hdr->last_usable_lba,
 		disk_guid, hdr->pentry_start_lba,
 		hdr->num_pentries, hdr->pentry_size);
+	free(disk_guid);
 	if (ret < 0)
 		return NULL;
 	return buf;

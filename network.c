@@ -18,7 +18,7 @@
 static int do_network_ioctl(int fd, int request, char *name, struct ifreq *ifr)
 {
 	memset(ifr, 0, sizeof(*ifr));
-	strncpy(ifr->ifr_name, name, IFNAMSIZ);
+	strncpy(ifr->ifr_name, name, IFNAMSIZ-1);
 	return ioctl(fd, request, ifr);
 }
 
@@ -54,7 +54,7 @@ char *get_network_interface_status(void)
 	struct ifconf ifconf;
 	int ctr = 0;
 	int fd, i;
-	char *outstr = xstrdup("");
+	char *outstr = NULL;
 
 	fd = socket(PF_INET, SOCK_DGRAM, 0);
 	if (fd < 0) {
@@ -67,8 +67,11 @@ char *get_network_interface_status(void)
 
 	if (ioctl(fd, SIOCGIFCONF, &ifconf)) {
 		pr_perror("SIOCGIFCONF");
+		close(fd);
 		return NULL;
 	}
+
+	outstr = xstrdup("");
 
 	for (i = 0, ctr = 0; i < ifconf.ifc_len; i += sizeof(struct ifreq), ctr++) {
 		char *name, *ip, *mac, *old_info;
@@ -88,6 +91,7 @@ char *get_network_interface_status(void)
 		free(mac);
 		free(old_info);
 	}
+	close(fd);
 
 	return outstr;
 }
@@ -108,7 +112,7 @@ void *interface_thread(void *data)
 	sa.nl_pid = getpid();
 
 	fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-	if (!fd) {
+	if (fd < 0) {
 		pr_perror("socket");
 		return NULL;
 	}

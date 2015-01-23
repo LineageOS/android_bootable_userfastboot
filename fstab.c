@@ -156,6 +156,7 @@ char *get_primary_disk_name(void)
 		}
 	}
 
+	closedir(dir);
 	return ret;
 }
 

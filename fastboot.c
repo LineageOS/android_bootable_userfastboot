@@ -714,15 +714,15 @@ static int open_usb_ffs(void)
 	return io.read_fp;
 
 err:
-	if (io.write_fp > 0) {
+	if (io.write_fp >= 0) {
 		close(io.write_fp);
 		io.write_fp = -1;
 	}
-	if (io.read_fp > 0) {
+	if (io.read_fp >= 0) {
 		close(io.read_fp);
 		io.read_fp = -1;
 	}
-	if (control_fp > 0) {
+	if (control_fp >= 0) {
 		close(control_fp);
 		control_fp = -1;
 	}
@@ -769,11 +769,11 @@ static int open_usb(void)
  * */
 void close_iofds(void)
 {
-	if (io.write_fp > 0) {
+	if (io.write_fp >= 0) {
 		close(io.write_fp);
 		io.write_fp = -1;
 	}
-	if (io.read_fp > 0) {
+	if (io.read_fp >= 0) {
 		if (enable_ffs)
 			close(io.read_fp);
 		io.read_fp = -1;

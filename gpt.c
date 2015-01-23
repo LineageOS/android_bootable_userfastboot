@@ -280,7 +280,7 @@ static bool create_ptn_cb(char *entry, int i _unused, void *data)
 int cmd_flash_gpt(Hashmap *params, int fd, void *data, unsigned sz)
 {
 	int ret = -1;
-	char *device, *plist, *buf, *conf_device;
+	char *device = NULL, *plist, *buf, *conf_device;
 	struct flash_gpt_context ctx;
 	uint64_t start_lba, end_lba, start_mb, end_mb;
 	uint64_t space_available_mb;
@@ -295,7 +295,13 @@ int cmd_flash_gpt(Hashmap *params, int fd, void *data, unsigned sz)
 
 	conf_device = iniparser_getstring(ctx.config, "base:device", NULL);
 	if (!conf_device || !strcmp(conf_device, "auto")) {
-		device = xasprintf("/dev/block/%s", get_primary_disk_name());
+		char *disk_name = get_primary_disk_name();
+		if(!disk_name) {
+			pr_error("Couldn't get primary disk name\n");
+			goto out;
+		}
+		device = xasprintf("/dev/block/%s", disk_name);
+		free(disk_name);
 	} else {
 		device = xstrdup(conf_device);
 	}

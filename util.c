@@ -409,6 +409,8 @@ int mount_loopback(const char *path, const char *type, char *mountpoint)
 
 		if (ioctl(loop_fd, LOOP_GET_STATUS, &info) < 0 && errno == ENXIO)
 			break;
+
+		close(loop_fd);
 	}
 
 	ret = ioctl(loop_fd, LOOP_SET_FD, file_fd);
@@ -870,12 +872,15 @@ static char *__read_sysfs(const char *fmt, va_list ap)
 	}
 
 	bytes_read = robust_read(fd, buf, sizeof(buf) - 1, true);
-	if (bytes_read < 0)
+	if (bytes_read < 0) {
+		close(fd);
 		return NULL;
+        }
 
 	buf[bytes_read] = '\0';
 	while (bytes_read && buf[--bytes_read] == '\n')
 		buf[bytes_read] = '\0';
+        close(fd);
 	return xstrdup(buf);
 }
 
@@ -962,7 +967,7 @@ int update_bcb(char *command)
 	}
 
 	memset(&bcb, 0, sizeof(bcb));
-	strncpy(bcb.command, command, sizeof(bcb.command));
+	strncpy(bcb.command, command, sizeof(bcb.command)-1);
 	if (named_file_write(vol_misc->blk_device, (void *)&bcb, sizeof(bcb), 0, 0)) {
 		pr_error("Couldn't update BCB!\n");
 		return -1;

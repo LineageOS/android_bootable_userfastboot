@@ -38,13 +38,19 @@
 int cmd_flash_mbr(Hashmap *params, int fd, void *data, unsigned sz)
 {
 	int ret = -1;
-	char *device, *target;
+	char *device = NULL, *target;
 
 	target = hashmapGet(params, "target");
 	if (target) {
 		device = xasprintf("/dev/block/%s", target);
 	} else {
-		device = xasprintf("/dev/block/%s", get_primary_disk_name());
+		char *disk_name = get_primary_disk_name();
+		if(!disk_name) {
+			pr_error("Failed to get disk name!\n");
+			goto out;
+		}
+		device = xasprintf("/dev/block/%s", disk_name);
+		free(disk_name);
 	}
 
 	if (sz > MBR_CODE_SIZE) {

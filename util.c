@@ -697,6 +697,7 @@ int execute_command(const char *fmt, ...)
 	va_start(ap, fmt);
 	if (vasprintf(&cmd, fmt, ap) < 0) {
 		pr_perror("vasprintf");
+		va_end(ap);
 		return -1;
 	}
 	va_end(ap);
@@ -727,6 +728,7 @@ int execute_command_data(void *data, unsigned sz, const char *fmt, ...)
 	va_start(ap, fmt);
 	if (vasprintf(&cmd, fmt, ap) < 0) {
 		pr_perror("vasprintf");
+		va_end(ap);
 		return -1;
 	}
 	va_end(ap);

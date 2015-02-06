@@ -1339,6 +1339,9 @@ static int garbage_disk(int argc, char **argv)
 	}
 
 	remaining_disk = disk_size = get_disk_size(disk_name);
+	if(disk_size < 0) {
+		goto out;
+	}
 
 	pr_status("Trashing %s contents...this can take a while", disk_name);
 
@@ -1421,6 +1424,7 @@ static int set_efi_var(int argc, char **argv)
 					pr_error("Couldn't clear '%s' EFI variable\n",
 					argv[1]);
 		}
+		free(data);
 	}
 	return ret;
 }
@@ -1574,6 +1578,7 @@ void populate_status_info(void)
 	pr_debug("%s", infostring);
 	mui_infotext(infostring);
 	free(infostring);
+	free(interface_info);
 }
 
 

@@ -95,6 +95,114 @@ endif
 include $(BUILD_EXECUTABLE)
 
 endif # TARGET_USE_USERFASTBOOT
+##################################
+include $(CLEAR_VARS)
+
+FORCE_PERMISSIVE_TO_UNCONFINED:=true
+
+ifeq ($(TARGET_BUILD_VARIANT),user)
+  # User builds are always forced unconfined+enforcing
+  FORCE_PERMISSIVE_TO_UNCONFINED:=true
+endif
+
+# SELinux policy version.
+# Must be <= /selinux/policyvers reported by the Android kernel.
+# Must be within the compatibility range reported by checkpolicy -V.
+POLICYVERS ?= 26
+
+MLS_SENS=1
+MLS_CATS=1024
+SEPOLICY_PATH=external/sepolicy
+
+# Quick edge case error detection for BOARD_SEPOLICY_REPLACE.
+# Builds the singular path for each replace file.
+sepolicy_replace_paths :=
+$(foreach pf, $(BOARD_SEPOLICY_REPLACE), \
+  $(if $(filter $(pf), $(BOARD_SEPOLICY_UNION)), \
+    $(error Ambiguous request for sepolicy $(pf). Appears in both \
+      BOARD_SEPOLICY_REPLACE and BOARD_SEPOLICY_UNION), \
+  ) \
+  $(eval _paths := $(filter-out $(BOARD_SEPOLICY_IGNORE), \
+  $(wildcard $(addsuffix /$(pf), $(BOARD_SEPOLICY_DIRS))))) \
+  $(eval _occurrences := $(words $(_paths))) \
+  $(if $(filter 0,$(_occurrences)), \
+    $(error No sepolicy file found for $(pf) in $(BOARD_SEPOLICY_DIRS)), \
+  ) \
+  $(if $(filter 1, $(_occurrences)), \
+    $(eval sepolicy_replace_paths += $(_paths)), \
+    $(error Multiple occurrences of replace file $(pf) in $(_paths)) \
+  ) \
+  $(if $(filter 0, $(words $(wildcard $(addsuffix /$(pf), $(SEPOLICY_PATH))))), \
+    $(error Specified the sepolicy file $(pf) in BOARD_SEPOLICY_REPLACE, \
+      but none found in $(SEPOLICY_PATH)), \
+  ) \
+)
+
+
+# Builds paths for all requested policy files w.r.t
+# both BOARD_SEPOLICY_REPLACE and BOARD_SEPOLICY_UNION
+# product variables.
+# $(1): the set of policy name paths to build
+build_policy = $(foreach type, $(1), \
+  $(filter-out $(BOARD_SEPOLICY_IGNORE), \
+    $(foreach expanded_type, $(notdir $(wildcard $(addsuffix /$(type), $(SEPOLICY_PATH)))), \
+      $(if $(filter $(expanded_type), $(BOARD_SEPOLICY_REPLACE)), \
+        $(wildcard $(addsuffix $(expanded_type), $(sort $(dir $(sepolicy_replace_paths))))), \
+        $(SEPOLICY_PATH)/$(expanded_type) \
+      ) \
+    ) \
+    $(foreach union_policy, $(wildcard $(addsuffix /$(type), $(BOARD_SEPOLICY_DIRS))), \
+      $(if $(filter $(notdir $(union_policy)), $(BOARD_SEPOLICY_UNION)), \
+        $(union_policy), \
+      ) \
+    ) \
+  ) \
+)
+
+sepolicy_build_files := security_classes \
+                        initial_sids \
+                        access_vectors \
+                        global_macros \
+                        mls_macros \
+                        mls \
+                        policy_capabilities \
+                        te_macros \
+                        attributes \
+                        *.te \
+                        roles \
+                        users \
+                        initial_sid_contexts \
+                        fs_use \
+                        genfs_contexts \
+                        port_contexts
+
+LOCAL_MODULE := sepolicy.userfastboot
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_TAGS := eng
+
+include $(BUILD_SYSTEM)/base_rules.mk
+userfastboot_sepolicy := $(call intermediates-dir-for,ETC,sepolicy.userfastboot)/sepolicy.userfastboot
+sepolicy_policy_userfastboot.conf := $(intermediates)/policy_userfastboot.conf
+$(sepolicy_policy_userfastboot.conf): PRIVATE_MLS_SENS := $(MLS_SENS)
+$(sepolicy_policy_userfastboot.conf): PRIVATE_MLS_CATS := $(MLS_CATS)
+$(sepolicy_policy_userfastboot.conf) : $(call build_policy, $(sepolicy_build_files))
+	@mkdir -p $(dir $@)
+	$(hide) m4 -D mls_num_sens=$(PRIVATE_MLS_SENS) -D mls_num_cats=$(PRIVATE_MLS_CATS) \
+		-D target_build_variant=$(TARGET_BUILD_VARIANT) \
+		-D force_permissive_to_unconfined=$(FORCE_PERMISSIVE_TO_UNCONFINED) \
+		-D target_userfastboot=true \
+		-s $^ > $@
+
+$(LOCAL_BUILT_MODULE) : $(sepolicy_policy_userfastboot.conf) $(HOST_OUT_EXECUTABLES)/checkpolicy
+	@mkdir -p $(dir $@)
+	$(hide) $(HOST_OUT_EXECUTABLES)/checkpolicy -M -c $(POLICYVERS) -o $@ $<
+
+built_sepolicy_userfastboot := $(LOCAL_BUILT_MODULE)
+sepolicy_policy_userfastboot.conf :=
+
+##################################
+include $(CLEAR_VARS)
+
 
 include bootable/userfastboot/libgpt/Android.mk
 

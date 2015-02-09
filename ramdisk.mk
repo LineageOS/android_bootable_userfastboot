@@ -55,6 +55,7 @@ ufb_data_out := $(USERFASTBOOT_ROOT_OUT)/data
 ufb_system_out := $(USERFASTBOOT_ROOT_OUT)/system
 ufb_etc_out := $(ufb_system_out)/etc
 ufb_initrc := $(ufb_src_dir)/init.rc
+userfastboot_sepolicy := $(call intermediates-dir-for,ETC,sepolicy.userfastboot)/sepolicy.userfastboot
 
 efibootmgr := $(PRODUCT_OUT)/efi/efibootmgr
 
@@ -81,6 +82,7 @@ $(USERFASTBOOT_RAMDISK): \
 		$(ufb_initrc) \
 		$(USERFASTBOOT_HARDWARE_INITRC) \
 		$(ufb_resources_deps) \
+		$(userfastboot_sepolicy) \
 		$(ufb_system_files) | $(ACP) \
 
 	$(hide) rm -rf $(USERFASTBOOT_ROOT_OUT)
@@ -102,6 +104,7 @@ ifneq ($(USERFASTBOOT_NO_GUI),true)
 	$(hide) $(ACP) -rf $(ufb_resources_common) $(USERFASTBOOT_ROOT_OUT)/
 endif
 	$(hide) $(ACP) -f $(recovery_fstab) $(ufb_etc_out)/recovery.fstab
+	$(hide) $(ACP) -f $(userfastboot_sepolicy) $(USERFASTBOOT_ROOT_OUT)/sepolicy
 	$(hide) $(call userfastboot-copy-files,$(TARGET_OUT),$(ufb_system_out))
 	$(hide) $(MKBOOTFS) $(USERFASTBOOT_ROOT_OUT) | $(MINIGZIP) > $@
 	@echo "Created UserFastBoot ramdisk: $@"

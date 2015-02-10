@@ -31,6 +31,9 @@ ifneq ($(TARGET_BUILD_VARIANT),user)
     ufb_modules += su
 endif
 
+#"get-32-bit-modules" define at main.mk
+ufb_modules += $(call get-32-bit-modules, $(ufb_modules))
+
 ufb_system_files = $(filter $(PRODUCT_OUT)%,$(call module-installed-files,$(ufb_modules)))
 
 ifneq ($(USERFASTBOOT_NO_GUI),true)

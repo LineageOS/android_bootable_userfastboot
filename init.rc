@@ -24,6 +24,10 @@ on init
     # Erasing partitions can take a long time, don't whine about it
     write /proc/sys/kernel/hung_task_timeout_secs 0
 
+# Indicate to fw loaders that the relevant mounts are up.
+on firmware_mounts_complete
+    rm /dev/.booting
+
 # Mount filesystems and start core system services.
 on late-init
     trigger early-fs
@@ -35,6 +39,9 @@ on late-init
     # this in another action so that the load will be scheduled after the prior
     # issued fs triggers have completed.
     trigger load_all_props_action
+
+    # Remove a file to wake up anything waiting for firmware.
+    trigger firmware_mounts_complete
 
     trigger early-boot
     trigger boot

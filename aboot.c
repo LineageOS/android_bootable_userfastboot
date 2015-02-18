@@ -247,14 +247,12 @@ static bool is_provisioning_mode(void)
 			 * 'provisioning mode' until the a device state is set
 			 * and we reboot */
 			provisioning_state = 1;
-			return true;
+		} else {
+			provisioning_state = -1;
 		}
 		free(data);
-		provisioning_state = -1;
-		return false;
-	} else {
-		return provisioning_state == 1;
 	}
+	return provisioning_state == 1;
 }
 
 

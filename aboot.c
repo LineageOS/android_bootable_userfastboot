@@ -48,6 +48,7 @@
 #include <inttypes.h>
 #include <linux/input.h>
 #include <sys/utsname.h>
+#include <sys/klog.h>
 
 #include <cutils/android_reboot.h>
 #include <cutils/hashmap.h>
@@ -1501,6 +1502,52 @@ static int oem_showtext(int argc, char **argv)
 	return 0;
 }
 
+#ifndef USER
+#define MAX_INFO_LEN	59
+#define FALLBACK_KLOG_BUF_SHIFT	17	/* CONFIG_LOG_BUF_SHIFT from our kernel */
+#define FALLBACK_KLOG_BUF_LEN	(1 << FALLBACK_KLOG_BUF_SHIFT)
+
+static int oem_dmesg(int argc, char **argv)
+{
+	char *buf, *str, *saveptr, *line;
+	char linebuf[MAX_INFO_LEN + 1];
+	int buf_sz, ret;
+
+	linebuf[MAX_INFO_LEN] = '\0';
+
+	/* Don't know why this fails, backup numbers taken from toolbox */
+	buf_sz = klogctl(KLOG_SIZE_BUFFER, 0, 0);
+	if (buf_sz < 0) {
+		pr_perror("klogctl KLOG_SIZE_BUFFER");
+		buf_sz = FALLBACK_KLOG_BUF_LEN;
+	}
+
+	buf = xmalloc(buf_sz + 1);
+
+	ret = klogctl(KLOG_READ_ALL, buf, buf_sz);
+	if (ret < 0) {
+		pr_perror("klogctl KLOG_READ_ALL");
+		free(buf);
+		return -1;
+	}
+	buf[ret] = '\0';
+
+	for (str = buf; ; str = NULL) {
+		line = strtok_r(str, "\n", &saveptr);
+		if (line == NULL)
+			break;
+
+		while (strlen(line) > MAX_INFO_LEN) {
+			strncpy(linebuf, line, MAX_INFO_LEN);
+			fastboot_info(linebuf);
+			line += MAX_INFO_LEN;
+		}
+		fastboot_info(line);
+	}
+	free(buf);
+	return 0;
+}
+#endif
 
 static int oem_get_hashes(int argc, char **argv)
 {
@@ -1730,6 +1777,7 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("audiodebug", oem_audio_debug, UNLOCKED);
 #ifndef USER
 	aboot_register_oem_cmd("reprovision", oem_clear_lock, LOCKED);
+	aboot_register_oem_cmd("dmesg", oem_dmesg, LOCKED);
 #endif
 	register_userfastboot_plugins();
 

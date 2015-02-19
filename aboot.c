@@ -1251,7 +1251,12 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 			while (*line && isspace(*line)) line++;
 			val = line;
 		}
-		if (*var && val && *val) {
+
+		if (!*var)
+			continue;
+
+		if (val) {
+			pr_info("Setting oemvar: %s\n", var);
 			switch (type) {
 			case VAR_TYPE_BLOB:
 				vallen = unescape_oemvar_val(val) - 1;
@@ -1262,13 +1267,17 @@ static int cmd_flash_oemvars(Hashmap *params, int fd, void *data, unsigned sz)
 			default:
 				goto out;
 			}
-			pr_info("Setting oemvar: %s\n", var);
-			if (efi_set_variable(curr_guid, var, (uint8_t *)val,
-						vallen, attributes)) {
-				pr_error("EFI variable setting failed\n");
-				goto out;
-			}
+		} else {
+			pr_info("Clearing oemvar: %s\n", var);
+			vallen = 0;
 		}
+
+		if (efi_set_variable(curr_guid, var, (uint8_t *)val,
+					vallen, attributes)) {
+			pr_error("EFI variable setting failed\n");
+			goto out;
+		}
+
 	}
 	ret = 0;
 out:

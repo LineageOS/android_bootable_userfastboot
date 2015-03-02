@@ -10,7 +10,6 @@ LOCAL_SRC_FILES := \
 	userfastboot.c \
 	fstab.c \
 	gpt.c \
-	mbr.c \
 	network.c \
 	ui.c \
 	sanity.c \

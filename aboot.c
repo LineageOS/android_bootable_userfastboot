@@ -67,7 +67,6 @@
 #include "userfastboot_plugin.h"
 #include "userfastboot_ui.h"
 #include "gpt.h"
-#include "mbr.h"
 #include "network.h"
 #include "sanity.h"
 #include "keystore.h"
@@ -1024,6 +1023,41 @@ static void cmd_boot(char *arg, int fd, void *data, unsigned sz)
 	pr_error("Reboot failed\n");
 }
 
+#ifndef USER
+#define MBR_CODE_SIZE	440
+
+static int cmd_flash_mbr(Hashmap *params, int fd, void *data, unsigned sz)
+{
+	int ret = -1;
+	char *device = NULL, *target;
+
+	target = hashmapGet(params, "target");
+	if (target) {
+		device = xasprintf("/dev/block/%s", target);
+	} else {
+		char *disk_name = get_primary_disk_name();
+		if(!disk_name) {
+			pr_error("Failed to get disk name!\n");
+			goto out;
+		}
+		device = xasprintf("/dev/block/%s", disk_name);
+		free(disk_name);
+	}
+
+	if (sz > MBR_CODE_SIZE) {
+		pr_error("MBR file cannot be larger than %d bytes!\n", MBR_CODE_SIZE);
+		goto out;
+	}
+
+	pr_debug("Writing %u bytes to %s\n", sz, device);
+	ret = named_file_write(device, data, sz, 0, 0);
+
+out:
+	free(device);
+
+	return ret;
+}
+
 
 static int cmd_flash_efirun(Hashmap *params, int fs, void *data, unsigned sz)
 {
@@ -1072,7 +1106,7 @@ static int cmd_flash_ifwi(Hashmap *params, int fd, void *data, unsigned sz)
 	fastboot_info("IFWI blob will be applied on next reboot");
 	return 0;
 }
-
+#endif
 
 static bool parse_oemvar_guid_line(char *line, efi_guid_t *g)
 {
@@ -1769,12 +1803,8 @@ void aboot_register_commands(void)
 	fastboot_register("flash:", cmd_flash);
 
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt, UNLOCKED);
-	aboot_register_flash_cmd("mbr", cmd_flash_mbr, UNLOCKED);
-	aboot_register_flash_cmd("sfu", cmd_flash_sfu, UNLOCKED);
-	aboot_register_flash_cmd("ifwi", cmd_flash_ifwi, UNLOCKED);
 	aboot_register_flash_cmd("oemvars", cmd_flash_oemvars, UNLOCKED);
 	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
-	aboot_register_flash_cmd("efirun", cmd_flash_efirun, UNLOCKED);
 
 	aboot_register_oem_cmd("garbage-disk", garbage_disk, UNLOCKED);
 	aboot_register_oem_cmd("setvar", set_efi_var, UNLOCKED);
@@ -1784,7 +1814,13 @@ void aboot_register_commands(void)
 	aboot_register_oem_cmd("off-mode-charge", oem_off_mode_charge, UNLOCKED);
 	aboot_register_oem_cmd("get-hashes", oem_get_hashes, LOCKED);
 	aboot_register_oem_cmd("audiodebug", oem_audio_debug, UNLOCKED);
+
 #ifndef USER
+	aboot_register_flash_cmd("mbr", cmd_flash_mbr, UNLOCKED);
+	aboot_register_flash_cmd("sfu", cmd_flash_sfu, UNLOCKED);
+	aboot_register_flash_cmd("ifwi", cmd_flash_ifwi, UNLOCKED);
+	aboot_register_flash_cmd("efirun", cmd_flash_efirun, UNLOCKED);
+
 	aboot_register_oem_cmd("reprovision", oem_clear_lock, LOCKED);
 	aboot_register_oem_cmd("dmesg", oem_dmesg, LOCKED);
 #endif

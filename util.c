@@ -256,7 +256,7 @@ int named_file_write_ext4_sparse(const char *filename, const char *what)
 
 	outfd = open(filename, O_WRONLY);
 	if (outfd < 0) {
-		pr_error("Coudln't open destination file %s\n", filename);
+		pr_error("Couldn't open destination file %s\n", filename);
 		goto out;
 	}
 	infd = open(what, O_RDONLY);
@@ -578,8 +578,8 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		ret = ioctl(fd, BLKSECDISCARD, &range);
 		if (ret >= 0)
 			break;
-		pr_info("BLKSECDISCARD didn't work (%s), trying BLKDISCARD\n",
-				strerror(errno));
+		pr_info("BLKSECDISCARD didn't work, trying BLKDISCARD (%d:%s)\n",
+				errno, strerror(errno));
 		etype = DISCARD;
 		/* fall through */
 	case DISCARD:
@@ -589,8 +589,8 @@ static int erase_range(int fd, uint64_t start, uint64_t len)
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (ret >= 0)
 			break;
-		pr_info("BLKDISCARD didn't work (%s), fall back to zeroing out\n",
-				strerror(errno));
+		pr_info("BLKDISCARD didn't work, fall back to zeroing out (%d:%s)\n",
+				errno, strerror(errno));
 		pr_info("This can take a LONG time!\n");
 		etype = ZERO;
 		/* Fall through */

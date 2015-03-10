@@ -1080,7 +1080,7 @@ static int cmd_flash_efirun(Hashmap *params, int fs, void *data, unsigned sz)
 	pr_error("Reboot failed\n");
 	return -1;
 }
-
+#endif
 
 static int cmd_flash_sfu(Hashmap *params, int fd, void *data, unsigned sz)
 {
@@ -1106,7 +1106,6 @@ static int cmd_flash_ifwi(Hashmap *params, int fd, void *data, unsigned sz)
 	fastboot_info("IFWI blob will be applied on next reboot");
 	return 0;
 }
-#endif
 
 static bool parse_oemvar_guid_line(char *line, efi_guid_t *g)
 {
@@ -1805,6 +1804,8 @@ void aboot_register_commands(void)
 	aboot_register_flash_cmd("gpt", cmd_flash_gpt, UNLOCKED);
 	aboot_register_flash_cmd("oemvars", cmd_flash_oemvars, UNLOCKED);
 	aboot_register_flash_cmd("keystore", cmd_flash_keystore, UNLOCKED);
+	aboot_register_flash_cmd("sfu", cmd_flash_sfu, UNLOCKED);
+	aboot_register_flash_cmd("ifwi", cmd_flash_ifwi, UNLOCKED);
 
 	aboot_register_oem_cmd("garbage-disk", garbage_disk, UNLOCKED);
 	aboot_register_oem_cmd("setvar", set_efi_var, UNLOCKED);
@@ -1817,8 +1818,6 @@ void aboot_register_commands(void)
 
 #ifndef USER
 	aboot_register_flash_cmd("mbr", cmd_flash_mbr, UNLOCKED);
-	aboot_register_flash_cmd("sfu", cmd_flash_sfu, UNLOCKED);
-	aboot_register_flash_cmd("ifwi", cmd_flash_ifwi, UNLOCKED);
 	aboot_register_flash_cmd("efirun", cmd_flash_efirun, UNLOCKED);
 
 	aboot_register_oem_cmd("reprovision", oem_clear_lock, LOCKED);

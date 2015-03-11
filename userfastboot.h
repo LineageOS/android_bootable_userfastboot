@@ -20,7 +20,7 @@ extern struct selabel_handle *sehandle;
 extern pthread_mutex_t action_mutex;
 
 #define RECOVERY_FSTAB_LOCATION	          "/system/etc/recovery.fstab"
-#define USERFASTBOOT_VERSION_NUMBER       "08.06"
+#define USERFASTBOOT_VERSION_NUMBER       "08.07"
 #if defined(USER)
 #define USERFASTBOOT_VARIANT              ""
 #elif defined(USERDEBUG)
